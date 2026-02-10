@@ -1,3 +1,14 @@
 streamlit
 pandas
 openpyxl
+reportlab
+requests
+xlsxwriter
+numpy
+python-docx          # 用于生成/修改 Word 文档 (.docx)
+reportlab            # 最强大的纯 Python PDF 生成库
+fpdf2                # 另一个轻量级 PDF 生成库（备选）
+pdfkit               # HTML 转 PDF（可能需要系统级依赖，建议先用 reportlab）
+WeasyPrint           # 网页转 PDF 的强力工具（推荐用于生成精美报表）
+plotly               # 如果未来要做交互式图表
+matplotlib           # 基础绘图库
