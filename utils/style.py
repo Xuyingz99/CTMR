@@ -55,7 +55,7 @@ def apply_custom_css():
             margin-bottom: 2rem;
         }
 
-        /* 4. 功能选择器 */
+        /* 4. 功能选择器 (Radio Group) */
         div[role="radiogroup"] > label > div:first-child { display: none !important; }
         div[role="radiogroup"] {
             display: flex;
@@ -89,7 +89,7 @@ def apply_custom_css():
             box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
         }
 
-        /* 5. 说明框优化 (纯 HTML 左对齐) */
+        /* 5. 说明框优化 */
         .info-box {
             background: #ffffff;
             border-left: 4px solid var(--deepseek-blue);
@@ -183,9 +183,11 @@ def apply_custom_css():
         [data-testid="stPills"] button:hover * {
             color: #4d6bfe !important;
         }
+    </style>
+    """, unsafe_allow_html=True)
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
-    
+    # 前端渲染优化：将报告文本拆分为“抬头”和“列表项”，美观展示
     if not report_text: return
     
     # 尝试拆分
