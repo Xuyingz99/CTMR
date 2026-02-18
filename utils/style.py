@@ -140,7 +140,7 @@ def apply_custom_css():
 
         #MainMenu, header, footer { visibility: hidden; }
                 
-        /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
+        /* 7. [新增] 大区筛选器 (Pills) 专项优化 - 强力覆盖版 */
         [data-testid="stPills"] {
             display: flex;
             gap: 12px;
@@ -148,6 +148,7 @@ def apply_custom_css():
             margin-bottom: 15px;
         }
         
+        /* 未选中状态 */
         [data-testid="stPills"] button {
             border-radius: 20px !important;
             border: 1px solid #e0e0e0 !important;
@@ -159,19 +160,18 @@ def apply_custom_css():
             height: auto !important;
             min-height: 40px !important;
         }
-        
-        /* --- 核心修改在这里：选中状态改为浅蓝透明背景 --- */
-        [data-testid="stPills"] button[aria-selected="true"] {
-            /* 背景色：DeepSeek蓝 (RGB: 77, 107, 254) + 10% 透明度 */
-            background-color: rgba(77, 107, 254, 0.1) !important;
-            /* 文字颜色：DeepSeek蓝 */
+
+        /* --- 核心修改：选中状态 (针对所有子元素强制变色) --- */
+        [data-testid="stPills"] [aria-selected="true"] {
+            background-color: rgba(77, 107, 254, 0.1) !important; /* 浅蓝背景 */
+            color: #4d6bfe !important;                             /* 蓝色文字 */
+            border: 1px solid #4d6bfe !important;                  /* 蓝色边框 */
+            box-shadow: 0 4px 12px rgba(77, 107, 254, 0.15) !important;
+        }
+
+        /* 强制覆盖选中状态下内部文字/图标的颜色 */
+        [data-testid="stPills"] [aria-selected="true"] * {
             color: #4d6bfe !important;
-            /* 边框：DeepSeek蓝 */
-            border: 1px solid #4d6bfe !important;
-            /* 确保没有渐变背景覆盖 */
-            background-image: none !important;
-            font-weight: 600 !important;
-            box-shadow: 0 4px 12px rgba(77, 107, 254, 0.15);
         }
         
         /* 悬停效果 */
@@ -180,12 +180,9 @@ def apply_custom_css():
             color: #4d6bfe !important;
             transform: translateY(-1px);
         }
-        [data-testid="stPills"] button[aria-selected="true"]:hover {
-            /* 悬停时稍微加深一点点背景 */
-            background-color: rgba(77, 107, 254, 0.15) !important;
-        }           
-    </style>
-    """, unsafe_allow_html=True)
+        [data-testid="stPills"] button:hover * {
+            color: #4d6bfe !important;
+        }
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
