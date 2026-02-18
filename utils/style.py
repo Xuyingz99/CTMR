@@ -185,9 +185,7 @@ def apply_custom_css():
         }
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
-    """
-    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，美观展示
-    """
+    
     if not report_text: return
     
     # 尝试拆分
