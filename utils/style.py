@@ -55,7 +55,7 @@ def apply_custom_css():
             margin-bottom: 2rem;
         }
 
-        /* 4. 功能选择器 (Radio) */
+        /* 4. 功能选择器 */
         div[role="radiogroup"] > label > div:first-child { display: none !important; }
         div[role="radiogroup"] {
             display: flex;
@@ -89,7 +89,7 @@ def apply_custom_css():
             box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
         }
 
-        /* 5. 说明框优化 */
+        /* 5. 说明框优化 (纯 HTML 左对齐) */
         .info-box {
             background: #ffffff;
             border-left: 4px solid var(--deepseek-blue);
@@ -140,7 +140,7 @@ def apply_custom_css():
 
         #MainMenu, header, footer { visibility: hidden; }
                 
-        /* 7. [专项修复] 大区筛选器 (Pills) 颜色修正 */
+        /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
         [data-testid="stPills"] {
             display: flex;
             gap: 12px;
@@ -148,37 +148,42 @@ def apply_custom_css():
             margin-bottom: 15px;
         }
         
-        /* 强制针对 Pills 内部的所有可点击元素 */
-        [data-testid="stPills"] [data-baseweb="tag"], 
-        [data-testid="stPills"] div[role="option"] {
+        [data-testid="stPills"] button {
             border-radius: 20px !important;
-            padding: 8px 24px !important;
-            font-size: 1rem !important;
             border: 1px solid #e0e0e0 !important;
-            background-color: white !important; /* 默认白色 */
+            background: white !important;
             color: #5f6368 !important;
+            padding: 6px 20px !important;
+            font-size: 0.95rem !important;
+            transition: all 0.2s ease;
+            height: auto !important;
+            min-height: 40px !important;
         }
-
-        /* 选中状态：强制覆盖为 DeepSeek 蓝 */
-        [data-testid="stPills"] [aria-selected="true"] {
-            background: var(--btn-gradient) !important; /* 这里调用了和按钮一样的蓝色渐变 */
-            color: white !important;
-            border: none !important;
-            box-shadow: 0 4px 12px rgba(77, 107, 254, 0.3) !important;
+        
+        /* --- 核心修改在这里：选中状态改为浅蓝透明背景 --- */
+        [data-testid="stPills"] button[aria-selected="true"] {
+            /* 背景色：DeepSeek蓝 (RGB: 77, 107, 254) + 10% 透明度 */
+            background-color: rgba(77, 107, 254, 0.1) !important;
+            /* 文字颜色：DeepSeek蓝 */
+            color: #4d6bfe !important;
+            /* 边框：DeepSeek蓝 */
+            border: 1px solid #4d6bfe !important;
+            /* 确保没有渐变背景覆盖 */
+            background-image: none !important;
             font-weight: 600 !important;
+            box-shadow: 0 4px 12px rgba(77, 107, 254, 0.15);
         }
-
-        /* 确保选中状态下的文字也是白色的 */
-        [data-testid="stPills"] [aria-selected="true"] p,
-        [data-testid="stPills"] [aria-selected="true"] span {
-            color: white !important;
+        
+        /* 悬停效果 */
+        [data-testid="stPills"] button:hover {
+            border-color: #4d6bfe !important;
+            color: #4d6bfe !important;
+            transform: translateY(-1px);
         }
-
-        /* 鼠标悬停效果 */
-        [data-testid="stPills"] [aria-selected="false"]:hover {
-            border-color: var(--deepseek-blue) !important;
-            color: var(--deepseek-blue) !important;
-        }
+        [data-testid="stPills"] button[aria-selected="true"]:hover {
+            /* 悬停时稍微加深一点点背景 */
+            background-color: rgba(77, 107, 254, 0.15) !important;
+        }           
     </style>
     """, unsafe_allow_html=True)
 
@@ -188,6 +193,7 @@ def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
     if not report_text: return
     
+    # 尝试拆分
     parts = re.split(r'(分大区情况如下：|分经营部情况如下：)', report_text)
     
     header_text = parts[0]
