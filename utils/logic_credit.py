@@ -1,5 +1,3 @@
-# utils/logic_risk_report.py
-
 import os
 import io
 import datetime
@@ -312,7 +310,6 @@ def generate_export_files_in_memory(file_stream):
         
     if sys_name == 'Windows':
         logs.append("🖥️ 检测到 Windows 环境，调用 COM 组件生成 PDF...")
-        # Windows com 需要物理路径
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_in:
             file_stream.seek(0)
             tmp_in.write(file_stream.read())
@@ -381,7 +378,7 @@ def generate_export_files_in_memory(file_stream):
 
 # ==================== 主控入口 ====================
 
-def process_risk_report(uploaded_file):
+def process_credit_report(uploaded_file):
     """
     处理风险管理日报主入口。
     返回: (word_bytes, word_text, export_files, logs, env_msg)
@@ -390,20 +387,15 @@ def process_risk_report(uploaded_file):
     sys_name = platform.system()
     env_msg = f"当前环境: {sys_name} " + ("(原生支持 PDF 导出)" if sys_name == 'Windows' else "(云端环境，将生成高清预览图替代 PDF)")
     
-    # 1. 前置清理
     kill_excel_processes()
-    
     file_stream = io.BytesIO(uploaded_file.getvalue())
     
-    # 2. 生成 Word
     word_bytes, word_text, word_logs = generate_word_in_memory(file_stream)
     logs.extend(word_logs)
     
-    # 3. 生成 PDF/Image
     export_files, export_logs = generate_export_files_in_memory(file_stream)
     logs.extend(export_logs)
     
-    # 4. 后置清理
     kill_excel_processes()
     
     return word_bytes, word_text, export_files, logs, env_msg
