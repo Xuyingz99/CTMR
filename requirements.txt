@@ -12,3 +12,4 @@ pdfkit               # HTML 转 PDF（可能需要系统级依赖，建议先用
 WeasyPrint           # 网页转 PDF 的强力工具（推荐用于生成精美报表）
 plotly               # 如果未来要做交互式图表
 matplotlib           # 基础绘图库
+pywin32; sys_platform == 'win32'
