@@ -17,28 +17,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 try:
     import matplotlib.pyplot as plt
     import matplotlib as mpl
-    import matplotlib.font_manager as fm
-    
-    # --- 【终极修复：强制加载本地中文字体】 ---
-    # 获取当前 logic_credit.py 所在的 utils 目录路径
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    # 定位我们刚刚上传的 simhei.ttf 字体文件
-    custom_font_path = os.path.join(current_dir, 'simhei.ttf')
-    
-    if os.path.exists(custom_font_path):
-        # 1. 强制将本地字体加入 Matplotlib 字体库
-        fm.fontManager.addfont(custom_font_path)
-        # 2. 获取该字体的内部名称
-        prop = fm.FontProperties(fname=custom_font_path)
-        # 3. 设置为全局默认字体
-        mpl.rcParams['font.family'] = prop.get_name()
-    else:
-        # 如果你还没上传 simhei.ttf，则使用原来的系统兜底逻辑
-        available_fonts = [f.name for f in fm.fontManager.ttflist]
-        zh_fonts = ['SimHei', 'WenQuanYi Micro Hei', 'Microsoft YaHei', 'Heiti TC', 'STHeiti', 'Noto Sans CJK SC', 'DejaVu Sans', 'Arial Unicode MS']
-        chosen_font = next((f for f in zh_fonts if f in available_fonts), 'sans-serif')
-        mpl.rcParams['font.family'] = chosen_font
-        
+    from matplotlib.font_manager import FontProperties
     mpl.rcParams['axes.unicode_minus'] = False
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
@@ -90,7 +69,7 @@ def set_font_style(run, font_name='宋体', size=12, bold=False):
 def generate_word_in_memory(file_stream):
     """内存级生成 Word 报告，返回 Docx 字节流和分类别的字典用于页面展示"""
     logs = []
-    report_text_dict = {}
+    report_text_dict = {} 
     
     try:
         file_stream.seek(0)
@@ -264,7 +243,6 @@ def generate_word_in_memory(file_stream):
                     center_text_block += f"{line}\n"
         doc.add_paragraph()
         
-        # 存入字典中
         report_text_dict[key] = center_text_block
 
     if not has_content:
@@ -283,10 +261,29 @@ def render_sheet_to_image_stream(ws):
     """(Linux环境替代方案) 将 Excel Sheet 渲染为严格 A4 比例的高清 PNG 字节流"""
     if not MATPLOTLIB_AVAILABLE:
         return None
+
+    # --- 获取本地字体对象 (绕开系统缓存，100%解决乱码) ---
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    yahei_path = os.path.join(current_dir, 'msyh.ttc')
+    
+    if not os.path.exists(yahei_path):
+        # 兼容用户可能上传为 ttf 后缀
+        yahei_path = os.path.join(current_dir, 'msyh.ttf') 
         
+    custom_font = FontProperties(fname=yahei_path) if os.path.exists(yahei_path) else None
+    
+    # --- 数据格式化与清理 ---
+    def format_cell(val):
+        if val is None: return ""
+        # 修复数值乱码与过长小数显示问题
+        if isinstance(val, float):
+            # 将小数强制保留最多两位，并去掉末尾多余的 0
+            return f"{val:.2f}".rstrip('0').rstrip('.') 
+        return str(val)
+
     data = []
     for row in ws.iter_rows(values_only=True):
-        clean_row = [str(cell) if cell is not None else "" for cell in row]
+        clean_row = [format_cell(cell) for cell in row]
         if any(clean_row):
             data.append(clean_row)
             
@@ -296,31 +293,39 @@ def render_sheet_to_image_stream(ws):
     max_col_idx = max((i for r in data for i, v in enumerate(r) if v), default=0) + 1
     data = [r[:max_col_idx] for r in data]
     
-    # 自动换行防止内容溢出：约束每行最大字符宽度
+    # 自动换行防止内容溢出
     def wrap_text(text, width=12):
         if not text: return ""
         return '\n'.join(textwrap.wrap(str(text), width=width))
 
     wrapped_data = [[wrap_text(cell, width=12) for cell in row] for row in data]
     
-    # 强制 A4 竖版尺寸 (210mm x 297mm) -> 英寸 (8.27 x 11.69)
+    # 强制 A4 竖版尺寸 (8.27 x 11.69 英寸)
     fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=300)
     ax.axis('tight')
     ax.axis('off')
     
     table = ax.table(cellText=wrapped_data, loc='center', cellLoc='center')
     table.auto_set_font_size(False)
-    # 缩小字体以适应 A4 版面
-    table.set_fontsize(7)
     
-    # 表格样式修复：统一细边框 0.5 宽，纯黑，处理表头背景
+    # 根据列数动态调整基础字体大小
+    base_font_size = 8 if max_col_idx <= 8 else 6
+    table.set_fontsize(base_font_size)
+    
+    # --- 表格样式修复与字体强制注入 ---
     for (row_idx, col_idx), cell in table.get_celld().items():
         cell.set_linewidth(0.5)
         cell.set_edgecolor('#000000')
-        cell.set_text_props(wrap=True)
+        
+        # 强制将单元格字体设置为我们刚刚加载的“微软雅黑”
+        if custom_font:
+            cell.set_text_props(fontproperties=custom_font, wrap=True)
+        else:
+            cell.set_text_props(wrap=True)
+            
+        # 表头灰色背景
         if row_idx == 0: 
             cell.set_facecolor('#f2f2f2')
-            cell.set_text_props(weight='bold')
     
     plt.tight_layout(pad=1.0)
     img_stream = io.BytesIO()
