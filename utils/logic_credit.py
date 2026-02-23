@@ -20,7 +20,8 @@ try:
     import matplotlib.font_manager as fm
     
     # 字体兜底逻辑：遍历系统所有可用字体，寻找支持中文的无衬线字体
-    available_fonts = [f.name for f in fm.fontManager.ttflists]
+    # 【已修复】：属性名为 ttflist (无s)
+    available_fonts = [f.name for f in fm.fontManager.ttflist]
     zh_fonts = ['SimHei', 'WenQuanYi Micro Hei', 'Microsoft YaHei', 'Heiti TC', 'STHeiti', 'Noto Sans CJK SC', 'DejaVu Sans', 'Arial Unicode MS']
     chosen_font = next((f for f in zh_fonts if f in available_fonts), 'sans-serif')
     
