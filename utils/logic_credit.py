@@ -19,13 +19,26 @@ try:
     import matplotlib as mpl
     import matplotlib.font_manager as fm
     
-    # 字体兜底逻辑：遍历系统所有可用字体，寻找支持中文的无衬线字体
-    # 【已修复】：属性名为 ttflist (无s)
-    available_fonts = [f.name for f in fm.fontManager.ttflist]
-    zh_fonts = ['SimHei', 'WenQuanYi Micro Hei', 'Microsoft YaHei', 'Heiti TC', 'STHeiti', 'Noto Sans CJK SC', 'DejaVu Sans', 'Arial Unicode MS']
-    chosen_font = next((f for f in zh_fonts if f in available_fonts), 'sans-serif')
+    # --- 【终极修复：强制加载本地中文字体】 ---
+    # 获取当前 logic_credit.py 所在的 utils 目录路径
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 定位我们刚刚上传的 simhei.ttf 字体文件
+    custom_font_path = os.path.join(current_dir, 'simhei.ttf')
     
-    mpl.rcParams['font.family'] = chosen_font
+    if os.path.exists(custom_font_path):
+        # 1. 强制将本地字体加入 Matplotlib 字体库
+        fm.fontManager.addfont(custom_font_path)
+        # 2. 获取该字体的内部名称
+        prop = fm.FontProperties(fname=custom_font_path)
+        # 3. 设置为全局默认字体
+        mpl.rcParams['font.family'] = prop.get_name()
+    else:
+        # 如果你还没上传 simhei.ttf，则使用原来的系统兜底逻辑
+        available_fonts = [f.name for f in fm.fontManager.ttflist]
+        zh_fonts = ['SimHei', 'WenQuanYi Micro Hei', 'Microsoft YaHei', 'Heiti TC', 'STHeiti', 'Noto Sans CJK SC', 'DejaVu Sans', 'Arial Unicode MS']
+        chosen_font = next((f for f in zh_fonts if f in available_fonts), 'sans-serif')
+        mpl.rcParams['font.family'] = chosen_font
+        
     mpl.rcParams['axes.unicode_minus'] = False
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
@@ -77,7 +90,7 @@ def set_font_style(run, font_name='宋体', size=12, bold=False):
 def generate_word_in_memory(file_stream):
     """内存级生成 Word 报告，返回 Docx 字节流和分类别的字典用于页面展示"""
     logs = []
-    report_text_dict = {} # 改为字典，按中心存储文本，便于前端分块渲染
+    report_text_dict = {}
     
     try:
         file_stream.seek(0)
