@@ -7,6 +7,7 @@ import platform
 import warnings
 import textwrap
 import openpyxl
+from openpyxl.utils import range_boundaries, get_column_letter
 
 from docx import Document
 from docx.shared import Pt
@@ -17,6 +18,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 try:
     import matplotlib.pyplot as plt
     import matplotlib as mpl
+    import matplotlib.patches as patches
     from matplotlib.font_manager import FontProperties
     mpl.rcParams['axes.unicode_minus'] = False
     MATPLOTLIB_AVAILABLE = True
@@ -255,78 +257,190 @@ def generate_word_in_memory(file_stream):
     logs.append("✅ Word 报告内存生成成功！")
     return out_stream, report_text_dict, logs
 
-# ==================== Linux 降级图片生成逻辑 ====================
+# ==================== 核心升级：1:1 完美还原的图片渲染引擎 ====================
 
-def render_sheet_to_image_stream(ws):
-    """(Linux环境替代方案) 将 Excel Sheet 渲染为严格 A4 比例的高清 PNG 字节流"""
+def render_sheet_range_to_image_stream(ws, range_str):
+    """(完全重构) 基于 patches 自定义绘图的终极 1:1 还原引擎"""
     if not MATPLOTLIB_AVAILABLE:
         return None
 
-    # --- 获取本地字体对象 (绕开系统缓存，100%解决乱码) ---
+    # --- 获取本地字体对象 (强制微软雅黑，解决所有乱码和粗体问题) ---
     current_dir = os.path.dirname(os.path.abspath(__file__))
     yahei_path = os.path.join(current_dir, 'msyh.ttc')
-    
     if not os.path.exists(yahei_path):
-        # 兼容用户可能上传为 ttf 后缀
         yahei_path = os.path.join(current_dir, 'msyh.ttf') 
-        
     custom_font = FontProperties(fname=yahei_path) if os.path.exists(yahei_path) else None
-    
-    # --- 数据格式化与清理 ---
-    def format_cell(val):
-        if val is None: return ""
-        # 修复数值乱码与过长小数显示问题
-        if isinstance(val, float):
-            # 将小数强制保留最多两位，并去掉末尾多余的 0
-            return f"{val:.2f}".rstrip('0').rstrip('.') 
-        return str(val)
 
-    data = []
-    for row in ws.iter_rows(values_only=True):
-        clean_row = [format_cell(cell) for cell in row]
-        if any(clean_row):
-            data.append(clean_row)
-            
-    if not data: return None
-    
-    # 截断过长空列以防图片过宽
-    max_col_idx = max((i for r in data for i, v in enumerate(r) if v), default=0) + 1
-    data = [r[:max_col_idx] for r in data]
-    
-    # 自动换行防止内容溢出
-    def wrap_text(text, width=12):
-        if not text: return ""
-        return '\n'.join(textwrap.wrap(str(text), width=width))
+    # --- 1. 范围解析 ---
+    range_str = range_str.replace('$', '')
+    min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    wrapped_data = [[wrap_text(cell, width=12) for cell in row] for row in data]
-    
-    # 强制 A4 竖版尺寸 (8.27 x 11.69 英寸)
+    # --- 2. 映射所有合并单元格 (解决大标题和层级不对齐的问题) ---
+    merged_dict = {}
+    for mr in ws.merged_cells.ranges:
+        if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= max_row and mr.max_row >= min_row:
+            for r in range(mr.min_row, mr.max_row + 1):
+                for c in range(mr.min_col, mr.max_col + 1):
+                    merged_dict[(r, c)] = {
+                        'top_left': (mr.min_row, mr.min_col),
+                        'bottom_right': (mr.max_row, mr.max_col)
+                    }
+
+    # --- 3. 提取行列真实宽度与高度 (解决列宽错乱、留白问题) ---
+    col_widths = {}
+    for c in range(min_col, max_col + 1):
+        letter = get_column_letter(c)
+        dim = ws.column_dimensions.get(letter)
+        w = dim.width if (dim and dim.width) else 12.0
+        col_widths[c] = w * 7.5  # 等比例放大宽度
+
+    row_heights = {}
+    for r in range(min_row, max_row + 1):
+        dim = ws.row_dimensions.get(r)
+        h = dim.height if (dim and dim.height) else 18.0
+        row_heights[r] = h * 1.3
+
+    total_width = sum(col_widths.values())
+    total_height = sum(row_heights.values())
+
+    # --- 4. 画布创建 (强制锁定 A4 尺寸) ---
     fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=300)
-    ax.axis('tight')
-    ax.axis('off')
     
-    table = ax.table(cellText=wrapped_data, loc='center', cellLoc='center')
-    table.auto_set_font_size(False)
+    # 根据 A4 比例动态缩放内容使其水平居中且不被裁切
+    a4_ratio = 11.69 / 8.27
+    table_ratio = total_height / total_width if total_width > 0 else 1
     
-    # 根据列数动态调整基础字体大小
-    base_font_size = 8 if max_col_idx <= 8 else 6
-    table.set_fontsize(base_font_size)
-    
-    # --- 表格样式修复与字体强制注入 ---
-    for (row_idx, col_idx), cell in table.get_celld().items():
-        cell.set_linewidth(0.5)
-        cell.set_edgecolor('#000000')
+    if table_ratio > a4_ratio:
+        target_width = total_height / a4_ratio
+        x_pad = (target_width - total_width) / 2
+        ax.set_xlim(-x_pad, total_width + x_pad)
+        ax.set_ylim(total_height, 0) # 翻转 Y 轴，符合从上到下的阅读习惯
+    else:
+        target_height = total_width * a4_ratio
+        y_pad = (target_height - total_height) / 2
+        ax.set_xlim(0, total_width)
+        ax.set_ylim(total_height + y_pad, -y_pad)
         
-        # 强制将单元格字体设置为我们刚刚加载的“微软雅黑”
-        if custom_font:
-            cell.set_text_props(fontproperties=custom_font, wrap=True)
-        else:
-            cell.set_text_props(wrap=True)
+    ax.axis('off')
+
+    # --- 5. 逐个单元格精准绘制 ---
+    y = 0
+    for r in range(min_row, max_row + 1):
+        x = 0
+        rh = row_heights.get(r, 20)
+        for c in range(min_col, max_col + 1):
+            cw = col_widths.get(c, 80)
             
-        # 表头灰色背景
-        if row_idx == 0: 
-            cell.set_facecolor('#f2f2f2')
-    
+            is_merged_top_left = True
+            draw_w, draw_h = cw, rh
+            
+            # 判断是否为合并单元格
+            if (r, c) in merged_dict:
+                merge_info = merged_dict[(r, c)]
+                if (r, c) != merge_info['top_left']:
+                    is_merged_top_left = False # 被合并的附属单元格不渲染
+                else:
+                    # 累加合并区域的总宽和总高
+                    mc_w = sum(col_widths.get(mc, 80) for mc in range(merge_info['top_left'][1], merge_info['bottom_right'][1] + 1))
+                    mc_h = sum(row_heights.get(mr, 20) for mr in range(merge_info['top_left'][0], merge_info['bottom_right'][0] + 1))
+                    draw_w, draw_h = mc_w, mc_h
+
+            if is_merged_top_left:
+                cell = ws.cell(row=r, column=c)
+                
+                # --- 背景色精准还原 (解决底色丢失) ---
+                bg_color = '#FFFFFF'
+                if cell.fill and cell.fill.patternType == 'solid':
+                    color = cell.fill.start_color
+                    if color.type == 'rgb' and color.rgb:
+                        rgb = str(color.rgb)
+                        if len(rgb) == 8 and rgb != '00000000':
+                            bg_color = '#' + rgb[2:]
+                        elif len(rgb) == 6:
+                            bg_color = '#' + rgb
+                
+                # 画出外框与底色
+                rect = patches.Rectangle((x, y), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=0.5)
+                ax.add_patch(rect)
+                
+                # --- 数值格式精准还原 (解决小数变长串、百分比消失) ---
+                val = cell.value
+                text = ""
+                if val is not None and val != "":
+                    fmt = cell.number_format or "General"
+                    if isinstance(val, (int, float)):
+                        if '%' in fmt:
+                            # 百分比还原
+                            text = f"{val:.0%}" if ('0%' in fmt and '.00' not in fmt) else f"{val:.2%}"
+                        elif ',' in fmt or val >= 1000 or val <= -1000:
+                            # 千分位格式还原
+                            text = f"{val:,.2f}" if ('0.00' in fmt or '0.0' in fmt) else f"{val:,.0f}"
+                        else:
+                            if isinstance(val, float):
+                                text = f"{val:.2f}".rstrip('0').rstrip('.')
+                            else:
+                                text = str(val)
+                    elif isinstance(val, datetime.datetime):
+                        text = val.strftime('%Y-%m-%d')
+                    else:
+                        text = str(val)
+                        
+                # --- 对齐方式还原 ---
+                halign = cell.alignment.horizontal if cell.alignment and cell.alignment.horizontal else 'center'
+                if halign not in ['left', 'center', 'right']: halign = 'center'
+                valign = cell.alignment.vertical if cell.alignment and cell.alignment.vertical else 'center'
+                
+                if halign == 'left': text_x = x + 3
+                elif halign == 'right': text_x = x + draw_w - 3
+                else: text_x = x + draw_w / 2
+                
+                if valign == 'top': text_y = y + 3
+                elif valign == 'bottom': text_y = y + draw_h - 3
+                else: text_y = y + draw_h / 2
+                
+                # --- 字体加粗与颜色还原 ---
+                is_bold = cell.font.bold if cell.font else False
+                font_weight = 'bold' if is_bold else 'normal'
+                
+                # 字体大小适配
+                font_size = 7
+                if cell.font and cell.font.size:
+                    font_size = max(5, min(cell.font.size * 0.65, 12))
+                    
+                text_color = '#000000'
+                if cell.font and cell.font.color and cell.font.color.rgb:
+                    rgb = str(cell.font.color.rgb)
+                    extracted_color = '#' + rgb[2:] if len(rgb)==8 else '#000000'
+                    if extracted_color != '#00000000': text_color = extracted_color
+
+                # 长文本自动换行以防超出边框截断
+                if isinstance(text, str) and len(text) > (draw_w / 6):
+                    chars_per_line = max(1, int(draw_w / 6))
+                    text = '\n'.join(textwrap.wrap(text, width=chars_per_line))
+                    
+                # 渲染文字
+                if text:
+                    kwargs = {
+                        'ha': halign,
+                        'va': 'center' if valign == 'center' else ('top' if valign == 'top' else 'bottom'),
+                        'color': text_color,
+                        'clip_on': True
+                    }
+                    if custom_font:
+                        # 使用自定义字体对象并强制附带粗细设置
+                        prop = custom_font.copy()
+                        prop.set_weight('bold' if is_bold else 'normal')
+                        prop.set_size(font_size)
+                        kwargs['fontproperties'] = prop
+                    else:
+                        kwargs['weight'] = font_weight
+                        kwargs['fontsize'] = font_size
+                        
+                    ax.text(text_x, text_y, text, **kwargs)
+
+            x += cw
+        y += rh
+
     plt.tight_layout(pad=1.0)
     img_stream = io.BytesIO()
     plt.savefig(img_stream, format='png', dpi=300, bbox_inches='tight')
@@ -343,6 +457,7 @@ def generate_export_files_in_memory(file_stream):
     today_mmdd = datetime.datetime.now().strftime('%m%d')
     sys_name = platform.system()
     
+    # --- 严格指定的数据区域，彻底剔除无关信息框选 ---
     sheets_info = [
         {"name": "每日-中粮贸易外部赊销限额使用监控表", "range": "$A$1:$G$30", "base_title": "中粮贸易外部赊销限额使用监控表"}
     ]
@@ -403,7 +518,8 @@ def generate_export_files_in_memory(file_stream):
             wb = openpyxl.load_workbook(file_stream, data_only=True)
             for s_info in sheets_info:
                 if s_info['name'] in wb.sheetnames:
-                    img_stream = render_sheet_to_image_stream(wb[s_info['name']])
+                    # 使用精准框选的新引擎
+                    img_stream = render_sheet_range_to_image_stream(wb[s_info['name']], s_info['range'])
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
