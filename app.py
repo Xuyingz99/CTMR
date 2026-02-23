@@ -167,24 +167,23 @@ st.markdown("""
     /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
     [data-testid="stPills"] {
         display: flex;
-        gap: 12px; /* 按钮之间的间距 */
+        gap: 12px;
         flex-wrap: wrap;
         margin-bottom: 15px;
     }
     
     [data-testid="stPills"] button {
-        border-radius: 20px !important; /* 圆角胶囊形状 */
+        border-radius: 20px !important;
         border: 1px solid #e0e0e0 !important;
         background: white !important;
         color: #5f6368 !important;
         padding: 6px 20px !important;
         font-size: 0.95rem !important;
         transition: all 0.2s ease;
-        min-height: 40px !important; /* 强制高度，防止被压缩 */
+        min-height: 40px !important;
         height: auto !important;
     }
     
-    /* 选中状态：DeepSeek 蓝渐变 */
     [data-testid="stPills"] button[aria-selected="true"] {
         background: var(--btn-gradient) !important;
         color: white !important;
@@ -193,7 +192,6 @@ st.markdown("""
         font-weight: 600 !important;
     }
     
-    /* 悬停效果 */
     [data-testid="stPills"] button:hover {
         border-color: var(--deepseek-blue) !important;
         color: var(--deepseek-blue) !important;
@@ -1063,7 +1061,7 @@ def process_additional_margin_logic(uploaded_file, region_filter):
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
-    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，美观展示
+    (此函数为前两个功能保留原有渲染格式)
     """
     if not report_text: return
     
@@ -1094,6 +1092,17 @@ def display_pretty_report(title, report_text, bg_color="#eef5ff"):
             {list_html}
         </div>
         """, unsafe_allow_html=True)
+
+def format_html_content_for_credit(text):
+    """(信用日报专用) 将纯文本按原有格式美化为 HTML 列表"""
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    list_html = ""
+    for line in lines:
+        if "情况如下：" in line or "【" in line:
+             list_html += f"<div style='font-weight: bold; margin-top: 8px; margin-bottom: 4px; color: #1f1f1f;'>{line.replace('**', '')}</div>"
+        else:
+             list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #333; line-height: 1.6;'>• {line}</div>"
+    return list_html
 
 # ==========================================
 # 主界面逻辑
@@ -1232,20 +1241,35 @@ def main():
             if st.button("🚀 生成报告与导出文件 / Generate"):
                 if uploaded_file:
                     with st.spinner("🤖 正在解析 Excel 数据并渲染跨平台文件，请稍候..."):
-                        # 调用刚刚重命名的新模块逻辑
-                        word_bytes, word_text, export_files, logs, env_msg = process_credit_report(uploaded_file)
+                        
+                        word_bytes, word_text_dict, export_files, logs, env_msg = process_credit_report(uploaded_file)
                         
                         st.info(f"💡 {env_msg}")
                         
                         if word_bytes or export_files:
                             st.success("✅ 任务处理完成！")
                             
-                            with st.expander("查看运行日志 / View Logs"):
-                                for log in logs:
-                                    st.write(log)
-                            
-                            if word_text:
-                                display_pretty_report("信用风险管理日报 - 网页预览", word_text, "#fcf8f2")
+                            # ---- [UI 优化] 分块着色渲染，复用 info-box 风格，去除了日志展开栏 ----
+                            if word_text_dict:
+                                st.markdown("<h3 style='margin-top: 10px; margin-bottom: 20px; color: #1f1f1f;'>信用风险管理日报</h3>", unsafe_allow_html=True)
+                                
+                                # 中心对应的主题色映射
+                                center_themes = {
+                                    "玉米": {"bg": "#eef5ff", "bd": "#d1e3ff", "bar": "#4d6bfe"}, # 浅蓝
+                                    "粮谷": {"bg": "#ebf9f1", "bd": "#c3e8d1", "bar": "#28a745"}, # 浅绿
+                                    "大豆": {"bg": "#fff6e5", "bd": "#ffe2b3", "bar": "#fd7e14"}  # 浅橙
+                                }
+                                
+                                for center_name, content in word_text_dict.items():
+                                    theme = center_themes.get(center_name, {"bg": "#fcf8f2", "bd": "#f0e6d2", "bar": "#6c757d"})
+                                    html_content = format_html_content_for_credit(content)
+                                    
+                                    # 复用 info-box 左边框高亮和阴影逻辑
+                                    st.markdown(f"""
+                                    <div style="background-color: {theme['bg']}; padding: 20px 25px; border-radius: 0 8px 8px 0; border: 1px solid {theme['bd']}; border-left: 4px solid {theme['bar']}; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
+                                        {html_content}
+                                    </div>
+                                    """, unsafe_allow_html=True)
                             
                             st.markdown("### 📥 下载生成文件")
                             dl_cols = st.columns(1 + len(export_files))
@@ -1273,6 +1297,7 @@ def main():
                                         use_container_width=True
                                     )
                                     
+                            # 图片预览降级展示
                             png_files = [f for f in export_files if f["type"] == "png"]
                             if png_files:
                                 st.markdown("#### 👁️ 图片预览")
@@ -1281,8 +1306,6 @@ def main():
 
                         else:
                             st.error("处理失败，未能提取到有效数据。")
-                            for log in logs:
-                                st.write(log)
                 else:
                     st.warning("⚠️ 请先上传 Excel 文件！")
                     
