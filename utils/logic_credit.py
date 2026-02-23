@@ -5,6 +5,7 @@ from datetime import timedelta
 import tempfile
 import platform
 import warnings
+import textwrap
 import openpyxl
 
 from docx import Document
@@ -12,18 +13,19 @@ from docx.shared import Pt
 from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# ==================== Matplotlib 字体与渲染修复 ====================
+# 尝试导入绘图库作为 Linux 环境的降级图片生成方案
 try:
     import matplotlib.pyplot as plt
     import matplotlib as mpl
+    import matplotlib.font_manager as fm
     
-    # 【修复 1：字体配置】强制注入包含主流 Linux/Windows 系统的中文字体组，防止方块乱码
-    # 按照优先级排列：Noto (Google CJK) -> 文泉驿 -> 微软雅黑 -> 黑体 -> 系统默认 Sans
-    mpl.rcParams['font.sans-serif'] = [
-        'Noto Sans CJK SC', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 
-        'Microsoft YaHei', 'SimHei', 'DejaVu Sans', 'sans-serif'
-    ]
-    mpl.rcParams['axes.unicode_minus'] = False # 修复负号显示为方块的问题
+    # 字体兜底逻辑：遍历系统所有可用字体，寻找支持中文的无衬线字体
+    available_fonts = [f.name for f in fm.fontManager.ttflists]
+    zh_fonts = ['SimHei', 'WenQuanYi Micro Hei', 'Microsoft YaHei', 'Heiti TC', 'STHeiti', 'Noto Sans CJK SC', 'DejaVu Sans', 'Arial Unicode MS']
+    chosen_font = next((f for f in zh_fonts if f in available_fonts), 'sans-serif')
+    
+    mpl.rcParams['font.family'] = chosen_font
+    mpl.rcParams['axes.unicode_minus'] = False
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
@@ -63,7 +65,7 @@ def get_cell_fill_color(cell):
         return True
     return False
 
-# ==================== Word 生成与 Web HTML 渲染逻辑 ====================
+# ==================== Word 生成逻辑 (内存级操作) ====================
 
 def set_font_style(run, font_name='宋体', size=12, bold=False):
     run.font.name = 'Times New Roman'
@@ -72,30 +74,23 @@ def set_font_style(run, font_name='宋体', size=12, bold=False):
     run.font.bold = bold
 
 def generate_word_in_memory(file_stream):
-    """内存级生成 Word 报告，返回 Docx 字节流和页面展示用的分色块 HTML"""
+    """内存级生成 Word 报告，返回 Docx 字节流和分类别的字典用于页面展示"""
     logs = []
-    
-    # 定义不同中心的 info-box 色块样式映射（完美适配 Streamlit 风格）
-    color_map = {
-        "玉米": {"bg": "#eef5ff", "border": "#4d6bfe"}, # 浅蓝
-        "粮谷": {"bg": "#f6ffed", "border": "#52c41a"}, # 浅绿
-        "大豆": {"bg": "#fff8e6", "border": "#fa8c16"}  # 浅橙
-    }
-    
-    html_blocks = [] # 用于组装带样式的 HTML 文本
+    report_text_dict = {} # 改为字典，按中心存储文本，便于前端分块渲染
     
     try:
         file_stream.seek(0)
         wb = openpyxl.load_workbook(file_stream, data_only=True)
     except Exception as e:
-        return None, "", [f"❌ 读取 Excel 文件失败: {e}"]
+        return None, {}, [f"❌ 读取 Excel 文件失败: {e}"]
 
     target_sheet_name = "每日-各品种线战略客户逾期通报"
     if target_sheet_name not in wb.sheetnames:
-        return None, "", [f"❌ 未找到关键工作表: {target_sheet_name}"]
+        return None, {}, [f"❌ 未找到关键工作表: {target_sheet_name}"]
     
     ws = wb[target_sheet_name]
     
+    # 1. 定位标题行
     header_row_idx = None
     col_map = {}
     required_cols = ["品种线", "大区", "经营部", "客户名称", "合同号", "品种", "逾期天数", "逾期金额"]
@@ -111,8 +106,9 @@ def generate_word_in_memory(file_stream):
             break
             
     if not header_row_idx:
-        return None, "", ["❌ 未找到标题行。"]
+        return None, {}, ["❌ 未找到标题行。"]
 
+    # 2. 划定范围
     scope_ranges = {}
     target_keywords = ["玉米", "粮谷", "大豆"] 
     p_col_idx = col_map.get("品种线")
@@ -128,6 +124,7 @@ def generate_word_in_memory(file_stream):
                         scope_ranges[kw] = range(start_r, end_r + 1)
                     break
 
+    # 3. 数据采集
     data_store = {}
     exclude_regions = ["东北大区", "内陆大区", "沿江大区", "沿海大区", "东北", "内陆", "沿江", "沿海"]
 
@@ -168,10 +165,12 @@ def generate_word_in_memory(file_stream):
                         '逾期金额': money_val
                     })
 
+    # 4. 生成 Word Document
     doc = Document()
     yesterday = datetime.datetime.now() - timedelta(days=1)
     date_str = f"{yesterday.year}年{yesterday.month}月{yesterday.day}日"
     
+    # 构建 Document
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     set_font_style(p_title.add_run("信用风险管理日报"), font_name='黑体', size=16, bold=True)
@@ -215,15 +214,8 @@ def generate_word_in_memory(file_stream):
         p_b.paragraph_format.first_line_indent = Pt(24)
         set_font_style(p_b.add_run(header_text), font_name='宋体', size=12)
         
-        # --- HTML 构建（对应 UI 优化要求，生成具有专属颜色的区块） ---
-        c_style = color_map.get(key, {"bg": "#ffffff", "border": "#cccccc"})
-        html_block = f"""
-        <div style="background-color: {c_style['bg']}; border-left: 4px solid {c_style['border']}; 
-                    padding: 15px 20px; border-radius: 0 8px 8px 0; margin-bottom: 20px; 
-                    color: #1f1f1f; font-size: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.03); line-height: 1.8;">
-            <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 8px;">【{key}中心】</div>
-            <div style="margin-bottom: 12px; text-indent: 2em;">{header_text}</div>
-        """
+        # 网页展示收集
+        center_text_block = f"【{key}中心】\n{header_text}\n"
 
         if key == "大豆":
             all_rows_flat.sort(key=lambda r: r['逾期金额'], reverse=True)
@@ -234,7 +226,7 @@ def generate_word_in_memory(file_stream):
                 p = doc.add_paragraph()
                 p.paragraph_format.first_line_indent = Pt(24)
                 set_font_style(p.add_run(line), font_name='宋体', size=12)
-                html_block += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
+                center_text_block += f"{line}\n"
         else:
             valid_groups_list.sort(key=lambda x: x['total'], reverse=True)
             for i, g_data in enumerate(valid_groups_list):
@@ -245,8 +237,7 @@ def generate_word_in_memory(file_stream):
                 p = doc.add_paragraph()
                 p.paragraph_format.first_line_indent = Pt(24)
                 set_font_style(p.add_run(group_line), font_name='黑体', size=12, bold=True)
-                
-                html_block += f"<div style='font-weight: bold; margin-top: 10px; margin-bottom: 4px;'>分大区情况如下：<br/>{group_line}</div>"
+                center_text_block += f"\n分大区情况如下：\n{group_line}\n"
                 
                 sorted_rows = sorted(g_data['rows'], key=lambda r: r['逾期金额'], reverse=True)
                 for j, row in enumerate(sorted_rows):
@@ -256,75 +247,71 @@ def generate_word_in_memory(file_stream):
                     p = doc.add_paragraph()
                     p.paragraph_format.first_line_indent = Pt(24)
                     set_font_style(p.add_run(line), font_name='宋体', size=12)
-                    html_block += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
-                    
+                    center_text_block += f"{line}\n"
         doc.add_paragraph()
-        html_block += "</div>" # 闭合当前中心的色块 div
-        html_blocks.append(html_block)
+        
+        # 存入字典中
+        report_text_dict[key] = center_text_block
 
     if not has_content:
-        return None, "", ["⚠️ 未提取到逾期数据，无 Word 报告生成。"]
+        return None, {}, ["⚠️ 未提取到逾期数据，无 Word 报告生成。"]
 
     out_stream = io.BytesIO()
     doc.save(out_stream)
     out_stream.seek(0)
     
     logs.append("✅ Word 报告内存生成成功！")
-    
-    # 将所有的 HTML 块拼接后返回
-    final_html = "".join(html_blocks)
-    return out_stream, final_html, logs
+    return out_stream, report_text_dict, logs
 
-# ==================== Linux 降级图片生成逻辑 (核心修复区) ====================
+# ==================== Linux 降级图片生成逻辑 ====================
 
 def render_sheet_to_image_stream(ws):
     """(Linux环境替代方案) 将 Excel Sheet 渲染为严格 A4 比例的高清 PNG 字节流"""
     if not MATPLOTLIB_AVAILABLE:
         return None
-    
-    # 提取并清理数据，跳过完全空白的行
+        
     data = []
     for row in ws.iter_rows(values_only=True):
-        clean_row = [str(cell).strip() if cell is not None else "" for cell in row]
+        clean_row = [str(cell) if cell is not None else "" for cell in row]
         if any(clean_row):
             data.append(clean_row)
             
     if not data: return None
     
-    # 【修复 2：截断空白列防越界】找到包含数据的最大真实列数
-    real_max_col = 0
-    for row in data:
-        for i, val in enumerate(row):
-            if val: real_max_col = max(real_max_col, i)
-    real_max_col += 1
+    # 截断过长空列以防图片过宽
+    max_col_idx = max((i for r in data for i, v in enumerate(r) if v), default=0) + 1
+    data = [r[:max_col_idx] for r in data]
     
-    # 裁剪多余空列
-    data = [r[:real_max_col] for r in data]
+    # 自动换行防止内容溢出：约束每行最大字符宽度
+    def wrap_text(text, width=12):
+        if not text: return ""
+        return '\n'.join(textwrap.wrap(str(text), width=width))
+
+    wrapped_data = [[wrap_text(cell, width=12) for cell in row] for row in data]
     
-    # 【修复 3：尺寸控制】严格 A4 竖版 (8.27 x 11.69 英寸)，300 DPI 保证清晰度但控制体积
+    # 强制 A4 竖版尺寸 (210mm x 297mm) -> 英寸 (8.27 x 11.69)
     fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=300)
     ax.axis('tight')
     ax.axis('off')
     
-    table = ax.table(cellText=data, loc='center', cellLoc='center')
+    table = ax.table(cellText=wrapped_data, loc='center', cellLoc='center')
     table.auto_set_font_size(False)
+    # 缩小字体以适应 A4 版面
+    table.set_fontsize(7)
     
-    # 自适应字体缩小以放入 A4
-    table.set_fontsize(7.5) 
+    # 表格样式修复：统一细边框 0.5 宽，纯黑，处理表头背景
+    for (row_idx, col_idx), cell in table.get_celld().items():
+        cell.set_linewidth(0.5)
+        cell.set_edgecolor('#000000')
+        cell.set_text_props(wrap=True)
+        if row_idx == 0: 
+            cell.set_facecolor('#f2f2f2')
+            cell.set_text_props(weight='bold')
     
-    # 【修复 4：表格样式规整】统一边框宽度和颜色，并开启自动换行
-    for (row, col), cell in table.get_celld().items():
-        cell.set_linewidth(0.5)           # 统一精简的线条宽度
-        cell.set_edgecolor('#000000')     # 统一黑色边框
-        cell.get_text().set_wrap(True)    # 允许内容在单元格内换行防止溢出
-        cell.PAD = 0.05                   # 微调边距，避免文字紧贴边框
-    
-    plt.tight_layout()
+    plt.tight_layout(pad=1.0)
     img_stream = io.BytesIO()
-    
-    # 限制 bbox_inches 让图片不要无节制延伸
     plt.savefig(img_stream, format='png', dpi=300, bbox_inches='tight')
-    plt.close(fig)
+    plt.close()
     img_stream.seek(0)
     return img_stream
 
@@ -344,7 +331,6 @@ def generate_export_files_in_memory(file_stream):
         sheets_info.append({"name": "每周-正大额度使用情况", "range": "$A$1:$L$34", "base_title": "正大额度使用情况"})
         
     if sys_name == 'Windows':
-        logs.append("🖥️ 检测到 Windows 环境，调用 COM 组件生成 PDF...")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_in:
             file_stream.seek(0)
             tmp_in.write(file_stream.read())
@@ -355,7 +341,7 @@ def generate_export_files_in_memory(file_stream):
             try:
                 app = win32com.client.Dispatch("Excel.Application")
             except:
-                app = win32com.client.Dispatch("Ket.Application") 
+                app = win32com.client.Dispatch("Ket.Application") # 兼容 WPS
                 
             app.Visible = False
             app.DisplayAlerts = False
@@ -382,7 +368,7 @@ def generate_export_files_in_memory(file_stream):
                     os.remove(temp_pdf_path)
                     logs.append(f"   ✅ 成功生成 PDF: {out_name}")
                 except Exception as e:
-                    logs.append(f"   ⚠️ 跳过 {s_info['name']}: {str(e)}")
+                    logs.append(f"   ⚠️ 跳过 {s_info['name']} (可能不存在或渲染失败): {str(e)}")
                     
             wb.Close(SaveChanges=False)
             app.Quit()
@@ -393,7 +379,6 @@ def generate_export_files_in_memory(file_stream):
                 os.remove(temp_excel_path)
                 
     else:
-        logs.append(f"🐧 检测到 {sys_name} (云端/Linux) 环境，降级生成高清预览图...")
         file_stream.seek(0)
         try:
             wb = openpyxl.load_workbook(file_stream, data_only=True)
@@ -404,8 +389,6 @@ def generate_export_files_in_memory(file_stream):
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
                         logs.append(f"   ✅ 成功生成高清图片: {out_name}")
-                    else:
-                        logs.append(f"   ⚠️ 渲染图片失败。")
         except Exception as e:
             logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
             
@@ -414,6 +397,10 @@ def generate_export_files_in_memory(file_stream):
 # ==================== 主控入口 ====================
 
 def process_credit_report(uploaded_file):
+    """
+    处理风险管理日报主入口。
+    返回: (word_bytes, word_text_dict, export_files, logs, env_msg)
+    """
     logs = []
     sys_name = platform.system()
     env_msg = f"当前环境: {sys_name} " + ("(原生支持 PDF 导出)" if sys_name == 'Windows' else "(云端环境，将生成高清预览图替代 PDF)")
@@ -421,7 +408,7 @@ def process_credit_report(uploaded_file):
     kill_excel_processes()
     file_stream = io.BytesIO(uploaded_file.getvalue())
     
-    word_bytes, word_text_html, word_logs = generate_word_in_memory(file_stream)
+    word_bytes, word_text_dict, word_logs = generate_word_in_memory(file_stream)
     logs.extend(word_logs)
     
     export_files, export_logs = generate_export_files_in_memory(file_stream)
@@ -429,4 +416,4 @@ def process_credit_report(uploaded_file):
     
     kill_excel_processes()
     
-    return word_bytes, word_text_html, export_files, logs, env_msg
+    return word_bytes, word_text_dict, export_files, logs, env_msg
