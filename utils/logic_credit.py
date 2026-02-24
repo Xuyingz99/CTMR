@@ -14,6 +14,7 @@ from docx.shared import Pt
 from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+# 尝试导入绘图库作为 Linux 环境的降级图片生成方案
 try:
     import matplotlib.pyplot as plt
     import matplotlib as mpl
@@ -58,7 +59,7 @@ def get_cell_fill_color(cell):
         return True
     return False
 
-# ==================== Word 生成逻辑 ====================
+# ==================== Word 生成逻辑 (保持不变) ====================
 
 def set_font_style(run, font_name='宋体', size=12, bold=False):
     run.font.name = 'Times New Roman'
@@ -234,6 +235,7 @@ def generate_word_in_memory(file_stream):
                     set_font_style(p.add_run(line), font_name='宋体', size=12)
                     center_text_block += f"{line}\n"
         doc.add_paragraph()
+        
         report_text_dict[key] = center_text_block
 
     if not has_content:
@@ -242,6 +244,7 @@ def generate_word_in_memory(file_stream):
     out_stream = io.BytesIO()
     doc.save(out_stream)
     out_stream.seek(0)
+    
     logs.append("✅ Word 报告内存生成成功！")
     return out_stream, report_text_dict, logs
 
@@ -267,6 +270,13 @@ def render_sheet_range_to_image_stream(ws, range_str):
 
     # 1. 动态截断：物理切除底部的所有冗余空白与说明
     actual_max_row = max_row
+    for r in range(min_row, max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
+        combined = "".join(row_vals)
+        if "是否填报" in combined or "填报说明" in combined:
+            actual_max_row = r - 1 
+            break
+            
     while actual_max_row >= min_row:
         row_has_data = False
         row_vals = [str(ws.cell(row=actual_max_row, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
@@ -303,12 +313,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # 4. 提取元信息，彻底从网格里物理剥除
-    title_text = ""
-    author_text = ""
-    date_text = ""
-    unit_text = ""
-    
     header_start_row = min_row
     for r in range(min_row, actual_max_row + 1):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols]
@@ -317,18 +321,29 @@ def render_sheet_range_to_image_stream(ws, range_str):
         if "序号" in combined or "业务单位" in combined or "大区" in combined:
             header_start_row = r
             break
-            
+
+    # 【增量优化点】文本提取逻辑解耦，即使都在同一行也能精准提取不丢失
+    title_text = ""
+    author_text = ""
+    date_text = ""
+    unit_text = ""
+    
     for r in range(min_row, actual_max_row + 1):
-        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols]
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
         combined = "".join(row_vals)
+        
+        # 提取标题
         if "汇总表" in combined or "监控表" in combined:
             if not title_text: title_text = next((v for v in row_vals if "表" in v), combined)
-        elif "制表单位" in combined:
-            author_text = next((v for v in row_vals if "制表单位" in v), combined)
-        elif "截止时间" in combined:
-            date_text = next((v for v in row_vals if "截止时间" in v), combined)
-        elif "单位" in combined and ("万元" in combined or "万" in combined):
-            unit_text = next((v for v in row_vals if "单位" in v), combined)
+            
+        # 遍历单元格，解耦提取并分别赋值（彻底解决丢失问题）
+        for v in row_vals:
+            if "制表单位" in v and not author_text:
+                author_text = v
+            if "截止时间" in v and not date_text:
+                date_text = v
+            if "单位" in v and ("万元" in v or "万" in v) and not unit_text:
+                unit_text = v
 
     header_end_row = header_start_row
     for r in range(header_start_row, actual_max_row + 1):
@@ -338,24 +353,23 @@ def render_sheet_range_to_image_stream(ws, range_str):
             header_end_row = r - 1
             break
 
-    # 5. 精准标记跳过行，消除多余框框
+    # 4. 精准标记跳过行，消除多余框框（即使是空行也会被消灭）
     row_types = {}
     row_heights = {}
     for r in range(min_row, actual_max_row + 1):
         combined = "".join([str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols])
         
-        # 只要是提取出来的标题、落款、空行，全部标记为 skip，彻底不画格子
         if r < header_start_row:
             row_types[r] = 'skip'
             row_heights[r] = 0.0
-        elif "制表单位" in combined or "截止时间" in combined or ("单位" in combined and "万" in combined) and "合计" not in combined:
+        elif "制表单位" in combined or "截止时间" in combined or (("单位" in combined and "万" in combined) and "合计" not in combined):
             row_types[r] = 'skip'
             row_heights[r] = 0.0
         else:
             row_types[r] = 'grid' 
             row_heights[r] = 3.2 if r <= header_end_row else 2.6
 
-    # 6. 计算列宽（修窄序号列）
+    # 5. 计算列宽
     col_widths = {c: 4.0 for c in valid_cols}
     for r in range(header_start_row, actual_max_row + 1):
         if row_types[r] == 'skip': continue
@@ -373,10 +387,10 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 w = text_len * 0.9 + 1.5 
                 if w > col_widths[c]: col_widths[c] = min(w, 25.0)
 
-    # 【优化项】极度压缩第一列（序号）的宽度
+    # 极度压缩第一列（序号）的宽度
     col_widths[valid_cols[0]] = 2.5 
 
-    # --- 【优化项：双重死锁百分比逻辑】 ---
+    # 双重死锁百分比逻辑
     def get_merged_cell_text(r, c):
         if (r, c) in merged_dict:
             tl_r, tl_c = merged_dict[(r, c)]['top_left']
@@ -391,20 +405,18 @@ def render_sheet_range_to_image_stream(ws, range_str):
         
         col_header_clean = col_header_full_text.replace("\n", "").replace(" ", "")
         
-        # 只认死理：这列的表头必定要包含这三个关键词中的一个，其余绝对不加百分比
         if "赊销余额/授信额度" in col_header_clean or "出库通知单/授信额度" in col_header_clean or "使用率" in col_header_clean:
             col_is_percent[c] = True
 
-    # 7. 创建物理级绝对坐标画布
+    # 6. 创建物理级绝对坐标画布
     W_grid = sum(col_widths.values())
     H_grid = sum(row_heights.values())
 
     A4_W, A4_H = 8.27, 11.69
-    margin_x = 0.4
+    margin_x, margin_y = 0.4, 0.4
     max_w_in = A4_W - 2 * margin_x
     S = max_w_in / W_grid 
     
-    # 上方预留 10 个单位的高度放标题+时间；下方预留 12 个单位放两行落款
     top_space = 10.0
     bottom_space = 12.0
     H_total_virtual = top_space + H_grid + bottom_space
@@ -412,7 +424,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
     
     Final_H = max(A4_H, H_in + 1.0)
     
-    # 【优化项：突破画质极限】
     fig = plt.figure(figsize=(A4_W, Final_H), dpi=800) 
     fig.patch.set_facecolor('white')
 
@@ -423,16 +434,20 @@ def render_sheet_range_to_image_stream(ws, range_str):
 
     base_fs = 2.5 * S * 72 * 0.42 
 
-    # ==================== 绘制外围提取图层 ====================
+    # ==================== 绘制外围提取图层 (完美落位) ====================
     # 顶部：大标题 (居中, 大字号, 必加粗)
     if title_text:
         prop_title = custom_font_bold.copy() if custom_font_bold else custom_font_regular
         if prop_title: prop_title.set_size(base_fs * 1.6)
         ax.text(W_grid / 2, 3.5, title_text, ha='center', va='center', fontproperties=prop_title, weight='bold', fontsize=base_fs*1.6)
     
-    # 顶部右侧：截止时间
+    # 【增量优化点】顶部左侧：截止时间落位
     if date_text:
-        ax.text(W_grid - 0.5, 8.0, date_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs)
+        ax.text(0.5, 8.0, date_text, ha='left', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
+
+    # 【增量优化点】顶部右侧：单位：万元 落位
+    if unit_text:
+        ax.text(W_grid - 0.5, 8.0, unit_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
     # ==================== 绘制核心表格层 ====================
     y_curr = top_space 
@@ -459,34 +474,31 @@ def render_sheet_range_to_image_stream(ws, range_str):
             if is_merged_top_left:
                 cell = ws.cell(row=r, column=c)
                 
-                # 原生底色提取
                 bg_color = '#FFFFFF'
                 if cell.fill and cell.fill.patternType == 'solid' and cell.fill.start_color.rgb:
                     rgb = str(cell.fill.start_color.rgb)
                     if len(rgb) == 8 and rgb != '00000000': bg_color = '#' + rgb[2:]
                     elif len(rgb) == 6: bg_color = '#' + rgb
                 
-                # 表头以外的序号列剥夺底色
-                if c == valid_cols[0] and r > header_end_row:
+                is_header_row = (r <= header_end_row)
+                if c == valid_cols[0] and not is_header_row:
                     bg_color = '#FFFFFF'
 
                 rect = patches.Rectangle((x_curr, y_curr), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=0.8)
                 ax.add_patch(rect)
                 
-                # --- 数值转换与双保险死锁 ---
                 val = cell.value
                 fmt = cell.number_format or "General"
                 text = ""
                 
                 if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
-                        # 必须是注册列，且数值必须 <= 10 才能赋予百分比
+                        # 双重死锁验证
                         if col_is_percent.get(c, False) and abs(val) <= 10:
                             if '.00' in fmt: text = f"{val:.2%}"
                             elif '.0' in fmt: text = f"{val:.1%}"
                             else: text = f"{val:.0%}"
                         else:
-                            # 绝对数字，执行千分位或去零
                             if ',' in fmt or (isinstance(val, (int, float)) and (val >= 1000 or val <= -1000)):
                                 if isinstance(val, float) and not val.is_integer():
                                     text = f"{val:,.2f}".rstrip('0').rstrip('.')
@@ -501,7 +513,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     else:
                         text = str(val).strip()
                 
-                # 字体属性全息继承
                 is_bold = False
                 if cell.font and cell.font.bold: is_bold = True
                 
@@ -511,7 +522,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     if len(rgb_val) == 8 and rgb_val != '00000000': text_color = '#' + rgb_val[2:]
                     elif len(rgb_val) == 6: text_color = '#' + rgb_val
                 
-                # 【优化项】表格区内容绝对强制居中！
+                # 【增量优化点】表格区内容绝对强制居中！
                 halign, valign = 'center', 'center'
                 text_x = x_curr + draw_w / 2
                 text_y = y_curr + draw_h / 2
@@ -546,13 +557,10 @@ def render_sheet_range_to_image_stream(ws, range_str):
             x_curr += cw
         y_curr += rh
 
-    # ==================== 绘制完美两行底部落款 ====================
-    # 制表单位与单位万元，优雅并排于最右下角
+    # ==================== 绘制底部落款 ====================
+    # 【增量优化点】制表单位独立成为表格正下方的优雅落款
     if author_text:
-        ax.text(W_grid - 0.5, y_curr + 4.0, author_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs)
-    
-    if unit_text:
-        ax.text(W_grid - 0.5, y_curr + 8.0, unit_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs)
+        ax.text(W_grid - 0.5, y_curr + 4.0, author_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
     img_stream = io.BytesIO()
     fig.savefig(img_stream, format='png', dpi=800, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
@@ -633,7 +641,7 @@ def generate_export_files_in_memory(file_stream):
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
-                        logs.append(f"   ✅ 成功生成超清无损对齐图片: {out_name}")
+                        logs.append(f"   ✅ 成功生成像素级对齐图片: {out_name}")
         except Exception as e:
             logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
             
