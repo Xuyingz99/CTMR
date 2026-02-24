@@ -14,7 +14,6 @@ from docx.shared import Pt
 from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# 尝试导入绘图库作为 Linux 环境的降级图片生成方案
 try:
     import matplotlib.pyplot as plt
     import matplotlib as mpl
@@ -59,7 +58,7 @@ def get_cell_fill_color(cell):
         return True
     return False
 
-# ==================== Word 生成逻辑 (保持不变) ====================
+# ==================== Word 生成逻辑 ====================
 
 def set_font_style(run, font_name='宋体', size=12, bold=False):
     run.font.name = 'Times New Roman'
@@ -70,6 +69,7 @@ def set_font_style(run, font_name='宋体', size=12, bold=False):
 def generate_word_in_memory(file_stream):
     logs = []
     report_text_dict = {} 
+    
     try:
         file_stream.seek(0)
         wb = openpyxl.load_workbook(file_stream, data_only=True)
@@ -81,9 +81,11 @@ def generate_word_in_memory(file_stream):
         return None, {}, [f"❌ 未找到关键工作表: {target_sheet_name}"]
     
     ws = wb[target_sheet_name]
+    
     header_row_idx = None
     col_map = {}
     required_cols = ["品种线", "大区", "经营部", "客户名称", "合同号", "品种", "逾期天数", "逾期金额"]
+    
     for r in range(1, 21):
         row_values = [clean_value(c.value) for c in ws[r]]
         matches = sum(1 for k in required_cols if any(k in v for v in row_values))
@@ -100,6 +102,7 @@ def generate_word_in_memory(file_stream):
     scope_ranges = {}
     target_keywords = ["玉米", "粮谷", "大豆"] 
     p_col_idx = col_map.get("品种线")
+    
     for rng in ws.merged_cells.ranges:
         if rng.min_col <= (p_col_idx + 1) <= rng.max_col:
             top_val = clean_value(ws.cell(row=rng.min_row, column=rng.min_col).value)
@@ -113,12 +116,14 @@ def generate_word_in_memory(file_stream):
 
     data_store = {}
     exclude_regions = ["东北大区", "内陆大区", "沿江大区", "沿海大区", "东北", "内陆", "沿江", "沿海"]
+
     for kw, row_range in scope_ranges.items():
         if kw not in data_store: data_store[kw] = {}
         current_group = None
         if kw == "大豆":
             current_group = "ALL_SOYBEAN"
             data_store[kw][current_group] = []
+        
         for r_idx in row_range:
             row = ws[r_idx]
             def get_val(key):
@@ -127,11 +132,13 @@ def generate_word_in_memory(file_stream):
 
             region_str = clean_value(get_val("大区"))
             client_name = clean_value(get_val("客户名称"))
+            
             is_group = False
             if kw != "大豆":
                 cell_region = row[col_map.get("大区")]
                 if region_str and (region_str not in exclude_regions) and get_cell_fill_color(cell_region):
                     is_group = True
+            
             if is_group:
                 current_group = region_str
                 if current_group not in data_store[kw]:
@@ -150,9 +157,11 @@ def generate_word_in_memory(file_stream):
     doc = Document()
     yesterday = datetime.datetime.now() - timedelta(days=1)
     date_str = f"{yesterday.year}年{yesterday.month}月{yesterday.day}日"
+    
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     set_font_style(p_title.add_run("信用风险管理日报"), font_name='黑体', size=16, bold=True)
+    
     p_sub = doc.add_paragraph()
     p_sub.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     set_font_style(p_sub.add_run(f"截至日期：{date_str}"), font_name='楷体', size=12)
@@ -160,13 +169,16 @@ def generate_word_in_memory(file_stream):
 
     chinese_nums = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
     has_content = False
+    
     for key in target_keywords:
         if key not in data_store or not data_store[key]: continue
         groups = data_store[key]
+
         total_count = 0
         total_money = 0
         valid_groups_list = []
         all_rows_flat = [] 
+
         for g_name, rows in groups.items():
             if len(rows) > 0:
                 g_total = sum(r['逾期金额'] for r in rows)
@@ -174,17 +186,20 @@ def generate_word_in_memory(file_stream):
                 all_rows_flat.extend(rows)
                 total_count += len(rows)
                 total_money += g_total
+        
         if total_count == 0: continue
         has_content = True
         
         header_text = (f"按照公司领导要求，请{key}中心充分发挥与战略客户的良好沟通机制，"
                        f"协助大区督促客户及时回款，压降逾期赊销。截至{date_str}，"
                        f"{key}中心战略客户，共计逾期{total_count}笔，逾期金额{int(total_money)}万元。")
+        
         p_h = doc.add_paragraph()
         set_font_style(p_h.add_run(f"【{key}中心】"), font_name='黑体', size=14, bold=True)
         p_b = doc.add_paragraph()
         p_b.paragraph_format.first_line_indent = Pt(24)
         set_font_style(p_b.add_run(header_text), font_name='宋体', size=12)
+        
         center_text_block = f"【{key}中心】\n{header_text}\n"
 
         if key == "大豆":
@@ -203,6 +218,7 @@ def generate_word_in_memory(file_stream):
                 idx_str = chinese_nums[i] if i < len(chinese_nums) else str(i+1)
                 group_line = (f"{idx_str}、{g_data['name']}，共计逾期{len(g_data['rows'])}笔，"
                               f"逾期金额{int(g_data['total'])}万元。")
+                
                 p = doc.add_paragraph()
                 p.paragraph_format.first_line_indent = Pt(24)
                 set_font_style(p.add_run(group_line), font_name='黑体', size=12, bold=True)
@@ -238,7 +254,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # 严格挂载字体库
     regular_path = os.path.join(current_dir, 'msyh.ttc')
     if not os.path.exists(regular_path): regular_path = os.path.join(current_dir, 'msyh.ttf')
     custom_font_regular = FontProperties(fname=regular_path) if os.path.exists(regular_path) else None
@@ -247,39 +262,29 @@ def render_sheet_range_to_image_stream(ws, range_str):
     if not os.path.exists(bold_path): bold_path = os.path.join(current_dir, 'msyhbd.ttf')
     custom_font_bold = FontProperties(fname=bold_path) if os.path.exists(bold_path) else custom_font_regular
 
-    # 1. 初始框选范围
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    # 2. 动态截断：切除底部“是否填报”
+    # 1. 动态截断：物理切除底部的所有冗余空白与说明
     actual_max_row = max_row
-    for r in range(min_row, max_row + 1):
-        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
-        combined = "".join(row_vals)
-        if "是否填报" in combined or "填报说明" in combined:
-            actual_max_row = r - 1 
-            break
-            
-    # 【修复 2】倒推切除所有的纯空白行，彻底消灭底部多余空框
     while actual_max_row >= min_row:
         row_has_data = False
-        for c in range(min_col, max_col + 1):
-            val = ws.cell(row=actual_max_row, column=c).value
-            if val is not None and str(val).strip() != "":
-                row_has_data = True
-                break
-        if row_has_data:
+        row_vals = [str(ws.cell(row=actual_max_row, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
+        combined = "".join(row_vals)
+        if "填报" in combined or "说明" in combined:
+            actual_max_row -= 1
+            continue
+        if any(row_vals): 
             break
         actual_max_row -= 1
 
-    # 3. 动态去除完全空白的冗余列
+    # 2. 动态剥离无数据列
     valid_cols_set = set()
     for r in range(min_row, actual_max_row + 1):
         for c in range(min_col, max_col + 1):
             val = ws.cell(row=r, column=c).value
             if val is not None and str(val).strip() != "":
                 valid_cols_set.add(c)
-                # 兼容合并单元格覆盖的列
                 for mr in ws.merged_cells.ranges:
                     if mr.min_row <= r <= mr.max_row and mr.min_col <= c <= mr.max_col:
                         for mc in range(mr.min_col, mr.max_col + 1):
@@ -287,7 +292,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
     valid_cols = sorted(list(valid_cols_set))
     if not valid_cols: return None
 
-    # 4. 映射合并单元格
+    # 3. 构建合并单元格字典
     merged_dict = {}
     for mr in ws.merged_cells.ranges:
         if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= actual_max_row and mr.max_row >= min_row:
@@ -298,123 +303,190 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # 【修复 1】精准定位特定的百分比列，杜绝 459100% 现象
-    col_is_percent = {c: False for c in valid_cols}
-    for c in valid_cols:
-        col_header_text = ""
-        for r in range(min_row, min_row + 6):
-            # 获取该列头部的所有文字内容，包含被合并的表头
-            check_r, check_c = r, c
-            for mr in ws.merged_cells.ranges:
-                if mr.min_row <= r <= mr.max_row and mr.min_col <= c <= mr.max_col:
-                    check_r, check_c = mr.min_row, mr.min_col
-                    break
-            col_header_text += str(ws.cell(row=check_r, column=check_c).value or "")
-            
-        # 只要这列的表头包含这几个词，才允许转百分比
-        if "赊销余额/授信额度" in col_header_text or "出库通知单/授信额度" in col_header_text or "使用率" in col_header_text:
-            col_is_percent[c] = True
-
-    # 5. 计算物理最佳行列比例
-    col_widths = {c: 4.0 for c in valid_cols}
-    row_heights = {r: 2.5 for r in range(min_row, actual_max_row + 1)}
+    # 4. 提取元信息，彻底从网格里物理剥除
+    title_text = ""
+    author_text = ""
+    date_text = ""
+    unit_text = ""
     
+    header_start_row = min_row
     for r in range(min_row, actual_max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols]
+        combined = "".join(row_vals)
+        
+        if "序号" in combined or "业务单位" in combined or "大区" in combined:
+            header_start_row = r
+            break
+            
+    for r in range(min_row, actual_max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols]
+        combined = "".join(row_vals)
+        if "汇总表" in combined or "监控表" in combined:
+            if not title_text: title_text = next((v for v in row_vals if "表" in v), combined)
+        elif "制表单位" in combined:
+            author_text = next((v for v in row_vals if "制表单位" in v), combined)
+        elif "截止时间" in combined:
+            date_text = next((v for v in row_vals if "截止时间" in v), combined)
+        elif "单位" in combined and ("万元" in combined or "万" in combined):
+            unit_text = next((v for v in row_vals if "单位" in v), combined)
+
+    header_end_row = header_start_row
+    for r in range(header_start_row, actual_max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols]
+        combined = "".join(row_vals)
+        if "沿江大区" in combined or "华东经营部" in combined or row_vals[0] == "1":
+            header_end_row = r - 1
+            break
+
+    # 5. 精准标记跳过行，消除多余框框
+    row_types = {}
+    row_heights = {}
+    for r in range(min_row, actual_max_row + 1):
+        combined = "".join([str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols])
+        
+        # 只要是提取出来的标题、落款、空行，全部标记为 skip，彻底不画格子
+        if r < header_start_row:
+            row_types[r] = 'skip'
+            row_heights[r] = 0.0
+        elif "制表单位" in combined or "截止时间" in combined or ("单位" in combined and "万" in combined) and "合计" not in combined:
+            row_types[r] = 'skip'
+            row_heights[r] = 0.0
+        else:
+            row_types[r] = 'grid' 
+            row_heights[r] = 3.2 if r <= header_end_row else 2.6
+
+    # 6. 计算列宽（修窄序号列）
+    col_widths = {c: 4.0 for c in valid_cols}
+    for r in range(header_start_row, actual_max_row + 1):
+        if row_types[r] == 'skip': continue
         for c in valid_cols:
             is_spanned = False
-            for mr in ws.merged_cells.ranges:
-                if mr.min_row <= r <= mr.max_row and mr.min_col <= c <= mr.max_col:
-                    if mr.max_col > mr.min_col: is_spanned = True
+            if (r, c) in merged_dict:
+                info = merged_dict[(r, c)]
+                if info['bottom_right'][1] > info['top_left'][1]: 
+                    is_spanned = True
             if is_spanned: continue 
+
             val = ws.cell(row=r, column=c).value
             if val:
                 text_len = sum(1.8 if ord(ch) > 255 else 1.1 for ch in str(val))
-                w = text_len * 0.9 + 1.8 
+                w = text_len * 0.9 + 1.5 
                 if w > col_widths[c]: col_widths[c] = min(w, 25.0)
-    col_widths[valid_cols[0]] = max(3.5, col_widths[valid_cols[0]])
 
-    # 6. 建立【DPI 1000】究极超清坐标画板
+    # 【优化项】极度压缩第一列（序号）的宽度
+    col_widths[valid_cols[0]] = 2.5 
+
+    # --- 【优化项：双重死锁百分比逻辑】 ---
+    def get_merged_cell_text(r, c):
+        if (r, c) in merged_dict:
+            tl_r, tl_c = merged_dict[(r, c)]['top_left']
+            return str(ws.cell(row=tl_r, column=tl_c).value or "").strip()
+        return str(ws.cell(row=r, column=c).value or "").strip()
+
+    col_is_percent = {c: False for c in valid_cols}
+    for c in valid_cols:
+        col_header_full_text = ""
+        for r in range(header_start_row, header_end_row + 1):
+            col_header_full_text += get_merged_cell_text(r, c)
+        
+        col_header_clean = col_header_full_text.replace("\n", "").replace(" ", "")
+        
+        # 只认死理：这列的表头必定要包含这三个关键词中的一个，其余绝对不加百分比
+        if "赊销余额/授信额度" in col_header_clean or "出库通知单/授信额度" in col_header_clean or "使用率" in col_header_clean:
+            col_is_percent[c] = True
+
+    # 7. 创建物理级绝对坐标画布
     W_grid = sum(col_widths.values())
     H_grid = sum(row_heights.values())
+
     A4_W, A4_H = 8.27, 11.69
-    margin_x, margin_y = 0.4, 0.4
+    margin_x = 0.4
     max_w_in = A4_W - 2 * margin_x
     S = max_w_in / W_grid 
-    H_in = H_grid * S
+    
+    # 上方预留 10 个单位的高度放标题+时间；下方预留 12 个单位放两行落款
+    top_space = 10.0
+    bottom_space = 12.0
+    H_total_virtual = top_space + H_grid + bottom_space
+    H_in = H_total_virtual * S
     
     Final_H = max(A4_H, H_in + 1.0)
-    fig = plt.figure(figsize=(A4_W, Final_H), dpi=1000) # 【修复 4】告别模糊
+    
+    # 【优化项：突破画质极限】
+    fig = plt.figure(figsize=(A4_W, Final_H), dpi=800) 
     fig.patch.set_facecolor('white')
 
-    ax = fig.add_axes([margin_x / A4_W, (Final_H - H_in - margin_y) / Final_H, max_w_in / A4_W, H_in / Final_H])
+    ax = fig.add_axes([margin_x / A4_W, (Final_H - H_in - 0.4) / Final_H, max_w_in / A4_W, H_in / Final_H])
     ax.set_xlim(0, W_grid)
-    ax.set_ylim(H_grid, 0)
+    ax.set_ylim(H_total_virtual, 0) # 翻转Y轴
     ax.axis('off')
 
-    base_fs = 2.5 * S * 72 * 0.45 
+    base_fs = 2.5 * S * 72 * 0.42 
 
-    # 7. 逐像素网格镜像渲染
-    y_curr = 0
-    for r in range(min_row, actual_max_row + 1):
+    # ==================== 绘制外围提取图层 ====================
+    # 顶部：大标题 (居中, 大字号, 必加粗)
+    if title_text:
+        prop_title = custom_font_bold.copy() if custom_font_bold else custom_font_regular
+        if prop_title: prop_title.set_size(base_fs * 1.6)
+        ax.text(W_grid / 2, 3.5, title_text, ha='center', va='center', fontproperties=prop_title, weight='bold', fontsize=base_fs*1.6)
+    
+    # 顶部右侧：截止时间
+    if date_text:
+        ax.text(W_grid - 0.5, 8.0, date_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs)
+
+    # ==================== 绘制核心表格层 ====================
+    y_curr = top_space 
+    
+    for r in range(header_start_row, actual_max_row + 1):
+        if row_types[r] == 'skip': continue
+        
         x_curr = 0
         rh = row_heights[r]
         
         for c in valid_cols:
             cw = col_widths[c]
-            
             is_merged_top_left = True
             draw_w, draw_h = cw, rh
             
             if (r, c) in merged_dict:
                 info = merged_dict[(r, c)]
                 if (r, c) != info['top_left']:
-                    is_merged_top_left = False 
+                    is_merged_top_left = False
                 else:
-                    draw_w = sum(col_widths.get(mc, 4.0) for mc in range(info['top_left'][1], info['bottom_right'][1] + 1) if mc in valid_cols)
-                    draw_h = sum(row_heights.get(mr, 2.5) for mr in range(info['top_left'][0], info['bottom_right'][0] + 1))
+                    draw_w = sum(col_widths.get(mc, 0) for mc in range(info['top_left'][1], info['bottom_right'][1] + 1) if mc in valid_cols)
+                    draw_h = sum(row_heights.get(mr_i, 2.2) for mr_i in range(info['top_left'][0], info['bottom_right'][0] + 1) if row_types.get(mr_i) != 'skip')
 
             if is_merged_top_left:
                 cell = ws.cell(row=r, column=c)
-                val_str = str(cell.value or "").strip()
                 
-                # --- 核心机制：识别独立排版的无边框单元格 (标题/落款) ---
-                is_title_meta = False
-                if "汇总表" in val_str or "监控表" in val_str:
-                    is_title_meta = True
-                elif "制表单位" in val_str or "截止时间" in val_str or ("单位" in val_str and "万" in val_str):
-                    is_title_meta = True
-
-                # 底色与边框提取
+                # 原生底色提取
                 bg_color = '#FFFFFF'
-                if not is_title_meta:
-                    if cell.fill and cell.fill.patternType == 'solid' and cell.fill.start_color.rgb:
-                        rgb = str(cell.fill.start_color.rgb)
-                        if len(rgb) == 8 and rgb != '00000000': bg_color = '#' + rgb[2:]
-                        elif len(rgb) == 6: bg_color = '#' + rgb
+                if cell.fill and cell.fill.patternType == 'solid' and cell.fill.start_color.rgb:
+                    rgb = str(cell.fill.start_color.rgb)
+                    if len(rgb) == 8 and rgb != '00000000': bg_color = '#' + rgb[2:]
+                    elif len(rgb) == 6: bg_color = '#' + rgb
                 
-                # 强制要求：除表头外，序号列禁止染底色
-                if c == valid_cols[0] and r > min_row + 3 and not is_title_meta:
-                    if str(cell.value).isdigit() or str(cell.value).strip() == "":
-                        bg_color = '#FFFFFF'
+                # 表头以外的序号列剥夺底色
+                if c == valid_cols[0] and r > header_end_row:
+                    bg_color = '#FFFFFF'
 
-                lw = 0.0 if is_title_meta else 0.8
-                rect = patches.Rectangle((x_curr, y_curr), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=lw)
+                rect = patches.Rectangle((x_curr, y_curr), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=0.8)
                 ax.add_patch(rect)
                 
-                # --- 核心机制：数值与格式的究极还原 ---
+                # --- 数值转换与双保险死锁 ---
                 val = cell.value
                 fmt = cell.number_format or "General"
                 text = ""
                 
                 if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
-                        # 【修复 1】双保险锁死：只有在指定列，且数值在合理范围内(<=10)，才赋予 %
-                        if ('%' in fmt) or (col_is_percent.get(c, False) and abs(val) <= 10):
+                        # 必须是注册列，且数值必须 <= 10 才能赋予百分比
+                        if col_is_percent.get(c, False) and abs(val) <= 10:
                             if '.00' in fmt: text = f"{val:.2%}"
                             elif '.0' in fmt: text = f"{val:.1%}"
                             else: text = f"{val:.0%}"
                         else:
-                            # 强制应用数字千分位
+                            # 绝对数字，执行千分位或去零
                             if ',' in fmt or (isinstance(val, (int, float)) and (val >= 1000 or val <= -1000)):
                                 if isinstance(val, float) and not val.is_integer():
                                     text = f"{val:,.2f}".rstrip('0').rstrip('.')
@@ -429,53 +501,21 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     else:
                         text = str(val).strip()
                 
-                # --- 字体加粗与颜色提取 ---
+                # 字体属性全息继承
                 is_bold = False
                 if cell.font and cell.font.bold: is_bold = True
                 
-                # 兜底：标题和关键行必加粗
-                if is_title_meta and "表" in text: is_bold = True
-                if "小计" in text or "合计" in text or "总计" in text: is_bold = True
-                if r <= min_row + 3 and not is_title_meta: is_bold = True # 表头必加粗
-
-                # 【修复 3】原生还原红色字体！
                 text_color = '#000000'
                 if cell.font and cell.font.color and hasattr(cell.font.color, 'rgb') and cell.font.color.rgb:
                     rgb_val = str(cell.font.color.rgb)
                     if len(rgb_val) == 8 and rgb_val != '00000000': text_color = '#' + rgb_val[2:]
                     elif len(rgb_val) == 6: text_color = '#' + rgb_val
                 
-                # --- 对齐方式定位 ---
-                halign = 'center'
-                valign = 'center'
+                # 【优化项】表格区内容绝对强制居中！
+                halign, valign = 'center', 'center'
+                text_x = x_curr + draw_w / 2
+                text_y = y_curr + draw_h / 2
                 
-                if is_title_meta:
-                    if "表" in text: halign = 'center'
-                    elif "单位" in text and "万" in text: halign = 'right'
-                    elif "时间" in text: halign = 'right'
-                    elif "制表" in text: halign = 'left'
-                else:
-                    excel_h = cell.alignment.horizontal if cell.alignment else None
-                    if excel_h in ['left', 'right', 'center']: halign = excel_h
-                    else: halign = 'center' # 【修复 4】表格明细强制居中
-                    
-                pad_x = 1.0
-                if halign == 'left': text_x = x_curr + pad_x
-                elif halign == 'right': text_x = x_curr + draw_w - pad_x
-                else: text_x = x_curr + draw_w / 2
-                
-                if is_title_meta and not "表" in text:
-                    valign = 'bottom'
-                    text_y = y_curr + draw_h - 0.2
-                else:
-                    valign = 'center'
-                    text_y = y_curr + draw_h / 2
-                
-                fs = base_fs
-                if is_title_meta:
-                    if "表" in text: fs = base_fs * 1.5
-                    else: fs = base_fs * 0.95
-
                 if isinstance(text, str) and len(text) > (draw_w / 1.1):
                     wrap_w = max(1, int(draw_w / 1.1))
                     text = '\n'.join(textwrap.wrap(text, width=wrap_w))
@@ -490,24 +530,32 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     
                     if is_bold and custom_font_bold:
                         prop = custom_font_bold.copy()
-                        prop.set_size(fs)
+                        prop.set_size(base_fs)
                         kwargs['fontproperties'] = prop
                     elif custom_font_regular:
                         prop = custom_font_regular.copy()
                         if is_bold: prop.set_weight('bold')
-                        prop.set_size(fs)
+                        prop.set_size(base_fs)
                         kwargs['fontproperties'] = prop
                     else:
                         kwargs['weight'] = 'bold' if is_bold else 'normal'
-                        kwargs['fontsize'] = fs
+                        kwargs['fontsize'] = base_fs
                         
                     ax.text(text_x, text_y, text, **kwargs)
 
             x_curr += cw
         y_curr += rh
 
+    # ==================== 绘制完美两行底部落款 ====================
+    # 制表单位与单位万元，优雅并排于最右下角
+    if author_text:
+        ax.text(W_grid - 0.5, y_curr + 4.0, author_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs)
+    
+    if unit_text:
+        ax.text(W_grid - 0.5, y_curr + 8.0, unit_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs)
+
     img_stream = io.BytesIO()
-    fig.savefig(img_stream, format='png', dpi=1000, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
+    fig.savefig(img_stream, format='png', dpi=800, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
     plt.close(fig)
     img_stream.seek(0)
     return img_stream
@@ -585,7 +633,7 @@ def generate_export_files_in_memory(file_stream):
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
-                        logs.append(f"   ✅ 成功生成像素级对齐图片: {out_name}")
+                        logs.append(f"   ✅ 成功生成超清无损对齐图片: {out_name}")
         except Exception as e:
             logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
             
