@@ -322,7 +322,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
             header_start_row = r
             break
 
-    # 【增量优化点】文本提取逻辑解耦，即使都在同一行也能精准提取不丢失
+    # 提取标题与落款文本解耦
     title_text = ""
     author_text = ""
     date_text = ""
@@ -332,11 +332,9 @@ def render_sheet_range_to_image_stream(ws, range_str):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
         combined = "".join(row_vals)
         
-        # 提取标题
         if "汇总表" in combined or "监控表" in combined:
             if not title_text: title_text = next((v for v in row_vals if "表" in v), combined)
             
-        # 遍历单元格，解耦提取并分别赋值（彻底解决丢失问题）
         for v in row_vals:
             if "制表单位" in v and not author_text:
                 author_text = v
@@ -353,7 +351,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
             header_end_row = r - 1
             break
 
-    # 4. 精准标记跳过行，消除多余框框（即使是空行也会被消灭）
+    # 4. 精准标记跳过行，消除多余框框
     row_types = {}
     row_heights = {}
     for r in range(min_row, actual_max_row + 1):
@@ -434,18 +432,18 @@ def render_sheet_range_to_image_stream(ws, range_str):
 
     base_fs = 2.5 * S * 72 * 0.42 
 
-    # ==================== 绘制外围提取图层 (完美落位) ====================
+    # ==================== 绘制外围提取图层 ====================
     # 顶部：大标题 (居中, 大字号, 必加粗)
     if title_text:
         prop_title = custom_font_bold.copy() if custom_font_bold else custom_font_regular
         if prop_title: prop_title.set_size(base_fs * 1.6)
         ax.text(W_grid / 2, 3.5, title_text, ha='center', va='center', fontproperties=prop_title, weight='bold', fontsize=base_fs*1.6)
     
-    # 【增量优化点】顶部左侧：截止时间落位
+    # 顶部左侧：截止时间
     if date_text:
         ax.text(0.5, 8.0, date_text, ha='left', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
-    # 【增量优化点】顶部右侧：单位：万元 落位
+    # 顶部右侧：单位：万元
     if unit_text:
         ax.text(W_grid - 0.5, 8.0, unit_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
@@ -493,20 +491,18 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 
                 if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
-                        # 双重死锁验证
+                        # 【终极优化点：数值处理】
                         if col_is_percent.get(c, False) and abs(val) <= 10:
                             if '.00' in fmt: text = f"{val:.2%}"
                             elif '.0' in fmt: text = f"{val:.1%}"
                             else: text = f"{val:.0%}"
                         else:
-                            if ',' in fmt or (isinstance(val, (int, float)) and (val >= 1000 or val <= -1000)):
-                                if isinstance(val, float) and not val.is_integer():
-                                    text = f"{val:,.2f}".rstrip('0').rstrip('.')
-                                else:
-                                    text = f"{val:,.0f}"
+                            # 彻底屏蔽底层长小数，四舍五入保留整数
+                            rounded_val = round(float(val))
+                            if ',' in fmt or abs(rounded_val) >= 1000:
+                                text = f"{rounded_val:,.0f}"
                             else:
-                                if isinstance(val, float): text = f"{val:.2f}".rstrip('0').rstrip('.')
-                                else: text = str(val)
+                                text = f"{rounded_val:.0f}"
                     elif isinstance(val, datetime.datetime):
                         if "年" in fmt: text = val.strftime('%Y年%m月%d日')
                         else: text = val.strftime('%Y-%m-%d')
@@ -522,7 +518,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     if len(rgb_val) == 8 and rgb_val != '00000000': text_color = '#' + rgb_val[2:]
                     elif len(rgb_val) == 6: text_color = '#' + rgb_val
                 
-                # 【增量优化点】表格区内容绝对强制居中！
+                # 表格区内容绝对强制居中！
                 halign, valign = 'center', 'center'
                 text_x = x_curr + draw_w / 2
                 text_y = y_curr + draw_h / 2
@@ -558,7 +554,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
         y_curr += rh
 
     # ==================== 绘制底部落款 ====================
-    # 【增量优化点】制表单位独立成为表格正下方的优雅落款
+    # 制表单位落位于最右下角
     if author_text:
         ax.text(W_grid - 0.5, y_curr + 4.0, author_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
