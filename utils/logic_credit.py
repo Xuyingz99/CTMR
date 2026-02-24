@@ -252,19 +252,19 @@ def generate_word_in_memory(file_stream):
     return out_stream, report_text_dict, logs
 
 
-# ==================== 终极优化：1:1 绝对映射坐标防变形引擎 ====================
+# ==================== 终极防蜷缩：1:1 自适应比例画布映射引擎 ====================
 
 def render_sheet_range_to_image_stream(ws, range_str):
     """
-    终极版图片渲染器：强制数学映射物理比例，根除任何表格变形与内容蜷缩！
-    兼顾主表及正大额度表的多样化表头。
+    废除 A4 强制挤压，采用真实物理比例尺动态建图。
+    绝对保证正大12列长表和常规7列表均不蜷缩、字体居中、线框分明！
     """
     if not MATPLOTLIB_AVAILABLE:
         return None
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # 1. 加载常规与粗体字体 (彻底解决部分环境字体无加粗效果的问题)
+    # 1. 挂载字体库
     regular_path = os.path.join(current_dir, 'msyh.ttc')
     if not os.path.exists(regular_path): regular_path = os.path.join(current_dir, 'msyh.ttf')
     custom_font_regular = FontProperties(fname=regular_path) if os.path.exists(regular_path) else None
@@ -273,11 +273,11 @@ def render_sheet_range_to_image_stream(ws, range_str):
     if not os.path.exists(bold_path): bold_path = os.path.join(current_dir, 'msyhbd.ttf')
     custom_font_bold = FontProperties(fname=bold_path) if os.path.exists(bold_path) else custom_font_regular
 
-    # --- 1. 精确框选有效范围 (根除冗余信息) ---
+    # 2. 精确框选有效范围 (剔除“大区是否填报”等冗余区域)
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    # --- 2. 映射所有合并单元格 ---
+    # 3. 映射所有合并单元格
     merged_dict = {}
     for mr in ws.merged_cells.ranges:
         if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= max_row and mr.max_row >= min_row:
@@ -288,7 +288,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # --- 3. 智能推断行类型 (为了强制施加样式规则) ---
+    # 4. 文本嗅探与层级打标 (针对正大与主表双重兼容)
     row_types = {}
     for r in range(min_row, max_row + 1):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
@@ -296,91 +296,78 @@ def render_sheet_range_to_image_stream(ws, range_str):
         
         if r == min_row:
             row_types[r] = 'title'
+        elif "制表单位" in combined or "截止时间" in combined:
+            row_types[r] = 'subtitle'
         elif "单位" in combined and "万元" in combined:
             row_types[r] = 'unit'
-        # 兼容正大表格的表头关键字（客户名称、额度等）
-        elif any(k in combined for k in ["序号", "业务单位", "赊销", "客户", "额度"]):
-            row_types[r] = 'header'
-        elif "合计" in combined:
+        # 兼容两种表的表头特征
+        elif any(k in combined for k in ["序号", "业务单位", "客户名称", "使用率", "赊销余额"]):
+            if any("大区" in v for v in row_vals) and "序号" not in combined:
+                row_types[r] = 'region'
+            else:
+                row_types[r] = 'header'
+        elif "小计" in combined:
+            row_types[r] = 'subtotal'
+        elif "合计" in combined or "总计" in combined:
             row_types[r] = 'total'
         elif any("大区" in v for v in row_vals):
             row_types[r] = 'region'
         else:
-            row_types[r] = 'normal'
+            row_types[r] = 'data'
 
-    # --- 4. 智能推断哪几列是百分比 (解决小数失真问题) ---
+    # 5. 百分比列智能推断 (解决小数畸变)
     col_is_percent = {c: False for c in range(min_col, max_col + 1)}
     for c in range(min_col, max_col + 1):
-        for r in range(min_row, min_row + 4): # 只扫描头部判断列性质
+        for r in range(min_row, min_row + 5):
             v = str(ws.cell(row=r, column=c).value or "")
-            if "率" in v or "占比" in v:
+            if "率" in v or "占比" in v or "%" in v:
                 col_is_percent[c] = True
                 break
 
-    # --- 5. 动态内容自适应计算宽高度 (防文字截断与留白) ---
+    # 6. 自适应动态宽高计算 (根除排版挤压核心！)
     col_widths = {c: 4.0 for c in range(min_col, max_col + 1)}
     row_heights = {}
     
-    # 定义基础行高比例
+    # 根据行类型配置行高
     for r in range(min_row, max_row + 1):
-        if row_types[r] == 'title': row_heights[r] = 4.0
+        if row_types[r] == 'title': row_heights[r] = 3.5
+        elif row_types[r] == 'subtitle': row_heights[r] = 2.0
         elif row_types[r] == 'unit': row_heights[r] = 1.5
         elif row_types[r] == 'header': row_heights[r] = 3.0
-        else: row_heights[r] = 2.5
+        else: row_heights[r] = 2.2
 
+    # 智能预估列宽
     for r in range(min_row, max_row + 1):
+        if row_types[r] in ['title', 'subtitle', 'unit']: continue
         for c in range(min_col, max_col + 1):
             if (r, c) in merged_dict and merged_dict[(r, c)]['top_left'] != (r, c): continue
             val = ws.cell(row=r, column=c).value
             if val:
-                # 汉字算 1.8 宽，英数算 1.0 宽
-                text_len = sum(1.8 if ord(ch) > 255 else 1.0 for ch in str(val))
-                w = text_len * 0.9 + 2.0 # 留出完美边距
-                if w > col_widths[c]: col_widths[c] = min(w, 20.0) # 限制单列最大宽度防止畸形
+                text_len = sum(1.8 if ord(ch) > 255 else 1.1 for ch in str(val))
+                w = text_len * 0.9 + 1.5 
+                if w > col_widths[c]: col_widths[c] = min(w, 22.0)
 
-    # 强制压窄特定列宽度使排版紧凑
-    col_widths[min_col] = 3.5 # 序号列
+    # 特定列强制美化压缩
+    col_widths[min_col] = 3.0 # 序号极窄
 
-    # --- 6. 核心重构：绝对防变形画布映射引擎 ---
+    # ================= 完美自适应物理画板生成 =================
     W = sum(col_widths.values())
     H = sum(row_heights.values())
 
-    # A4 纸张物理尺寸定义 (英寸)
-    A4_W, A4_H = 8.27, 11.69
-    margin_x = 0.5  # 左右各留半寸
-    margin_y_top = 1.0 # 顶部留一寸
-    margin_y_bot = 0.5
-    
-    max_w_in = A4_W - 2 * margin_x
-    max_h_in = A4_H - margin_y_top - margin_y_bot
-
-    # 计算缩放系数 S (1虚拟数据单位 = 多少英寸)
-    S = max_w_in / W
-    if H * S > max_h_in: 
-        S = max_h_in / H # 如果表格太长，以高度压缩为准
-
-    W_in = W * S # 表格的物理绝对宽
-    H_in = H * S # 表格的物理绝对高
-
-    # 创建标准 A4 画布
-    fig = plt.figure(figsize=(A4_W, A4_H), dpi=300)
+    # 物理比例尺：1 逻辑单元 = 0.16 英寸 (此系数保证 300DPI 下文字饱满清晰)
+    scale = 0.16 
+    fig = plt.figure(figsize=(W * scale, H * scale + 0.5), dpi=300)
     fig.patch.set_facecolor('white')
 
-    # 将坐标系完美嵌入 A4 纸的中央靠上，且坐标比例 1:1 绝对对齐
-    left = (A4_W - W_in) / 2 / A4_W
-    bottom = (A4_H - margin_y_top - H_in) / A4_H
-    width_frac = W_in / A4_W
-    height_frac = H_in / A4_H
-
-    ax = fig.add_axes([left, bottom, width_frac, height_frac])
+    ax = fig.add_axes([0, 0, 1, 1])
     ax.set_xlim(0, W)
-    ax.set_ylim(H, 0) # 反转 Y 轴，让表格从上往下画
+    ax.set_ylim(H, 0) # 翻转 Y 轴，符合从上到下绘制直觉
     ax.axis('off')
 
-    # 计算完美的字体尺寸 (占行高的约 42%)
-    base_font_size = 2.5 * S * 72 * 0.42 
+    # 计算完美字号 (占行高的恰当比例)
+    base_fs = 9.0 
 
-    # --- 7. 逐个单元格精准绘制与样式复刻 ---
+    # 7. 像素级渲染循环
     y = 0
     for r in range(min_row, max_row + 1):
         x = 0
@@ -393,6 +380,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
             is_merged_top_left = True
             draw_w, draw_h = cw, rh
             
+            # 合并单元格跳过逻辑
             if (r, c) in merged_dict:
                 info = merged_dict[(r, c)]
                 if (r, c) != info['top_left']:
@@ -404,35 +392,35 @@ def render_sheet_range_to_image_stream(ws, range_str):
             if is_merged_top_left:
                 cell = ws.cell(row=r, column=c)
                 
-                # ------ 颜色层级精准控制 ------
+                # --- A. 层级底色复刻与线条渲染 ---
                 bg_color = '#FFFFFF'
-                if rtype == 'header': bg_color = '#E8EDF2' # 浅灰蓝色
-                elif rtype == 'region': bg_color = '#D9E1F2' # 稍深灰蓝色(突出大区)
-                elif rtype == 'total': bg_color = '#FCE4D6' # 浅橙色(突出合计)
-                elif rtype in ['title', 'unit']: bg_color = '#FFFFFF'
+                if rtype == 'header': bg_color = '#EAECEF' # 浅灰蓝色
+                elif rtype == 'region': bg_color = '#DCE6F1' # 蓝灰色 (大区)
+                elif rtype == 'subtotal': bg_color = '#FCE4D6' # 浅橙色 (小计)
+                elif rtype == 'total': bg_color = '#F8CBAD' # 深橙色 (合计)
+                elif rtype in ['title', 'subtitle', 'unit']: bg_color = '#FFFFFF'
                 else:
-                    # 读取 Excel 本身底色作为备用
                     if cell.fill and cell.fill.patternType == 'solid' and cell.fill.start_color.rgb:
                         rgb = str(cell.fill.start_color.rgb)
                         if len(rgb) == 8 and rgb != '00000000': bg_color = '#' + rgb[2:] 
 
-                # 剔除顶部的线框，确保清爽
-                lw = 0 if rtype in ['title', 'unit'] else 0.8
+                # 表头外的附属文本行不画边框，显得高级
+                lw = 0 if rtype in ['title', 'subtitle', 'unit'] else 0.8
                 rect = patches.Rectangle((x, y), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=lw)
                 ax.add_patch(rect)
                 
-                # ------ 数值格式化机制 ------
+                # --- B. 数据格式化转换器 ---
                 val = cell.value
                 fmt = cell.number_format or "General"
                 text = ""
                 
                 if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
-                        # 判断如果是使用率，强制转成完美的 50%
+                        # PDF 要求百分比展示为 50%、88% 等格式
                         if '%' in fmt or col_is_percent[c]:
                             text = f"{val:.0%}"
                         else:
-                            # 强制添加千分位，并抹除末尾冗余的 .00
+                            # 金额强加千分位，如 82,436
                             if isinstance(val, float) and not val.is_integer():
                                 text = f"{val:,.2f}".rstrip('0').rstrip('.')
                             else:
@@ -442,15 +430,18 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     else:
                         text = str(val).strip()
                 
-                # ------ 字体加粗规则 (严格遵循要求) ------
-                is_bold = rtype in ['title', 'header', 'region', 'total']
+                # --- C. 层级字体加粗规则 ---
+                # PDF 规定：标题、表头、大区行、小计、合计必须强加粗！
+                is_bold = rtype in ['title', 'header', 'region', 'subtotal', 'total']
                 
-                # ------ 对齐方式规则 ------
+                # --- D. 对齐方式定位 ---
                 halign = 'center'
                 valign = 'center'
+                
                 if rtype == 'title': halign = 'center'
-                elif rtype == 'unit': halign = 'right'
-                elif rtype == 'region': halign = 'center' # 大区强制居中更好看
+                elif "制表单位" in text: halign = 'left'
+                elif "截止时间" in text or rtype == 'unit': halign = 'right'
+                elif rtype == 'region' and W < 40: halign = 'center'
                 else:
                     excel_h = cell.alignment.horizontal if cell.alignment else None
                     if excel_h in ['left', 'right', 'center']: halign = excel_h
@@ -459,19 +450,26 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 if halign == 'left': text_x = x + pad_x
                 elif halign == 'right': text_x = x + draw_w - pad_x
                 else: text_x = x + draw_w / 2
-                text_y = y + draw_h / 2
                 
-                # 动态字号
-                fs = base_font_size
-                if rtype == 'title': fs = base_font_size * 1.5
-                elif rtype == 'unit': fs = base_font_size * 0.9
+                # 顶部/中部/底部对齐
+                if rtype == 'subtitle' or rtype == 'unit': 
+                    valign = 'bottom'
+                    text_y = y + draw_h - 0.2
+                else:
+                    valign = 'center'
+                    text_y = y + draw_h / 2
+                
+                # 字号阶梯分配
+                fs = base_fs
+                if rtype == 'title': fs = base_fs * 1.5
+                elif rtype in ['subtitle', 'unit']: fs = base_fs * 0.95
 
-                # 防止长文本溢出导致重叠
+                # 文本过长防止溢出
                 if len(text) > (draw_w / 1.1):
                     wrap_w = max(1, int(draw_w / 1.1))
                     text = '\n'.join(textwrap.wrap(text, width=wrap_w))
                     
-                # ------ 最终渲染渲染文字 ------
+                # --- E. 物理渲染投射 ---
                 if text:
                     kwargs = {
                         'ha': halign,
@@ -490,7 +488,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         prop.set_size(fs)
                         kwargs['fontproperties'] = prop
                     else:
-                        # 极端防崩溃兜底
                         kwargs['weight'] = 'bold' if is_bold else 'normal'
                         kwargs['fontsize'] = fs
                         
@@ -500,21 +497,21 @@ def render_sheet_range_to_image_stream(ws, range_str):
         y += rh
 
     img_stream = io.BytesIO()
-    fig.savefig(img_stream, format='png', dpi=300, facecolor=fig.get_facecolor(), edgecolor='none')
+    fig.savefig(img_stream, format='png', dpi=300, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
     plt.close(fig)
     img_stream.seek(0)
     return img_stream
 
-# ==================== 导出文件生成逻辑 (PDF/Image) ====================
+# ==================== 导出文件生成逻辑 ====================
 
 def generate_export_files_in_memory(file_stream):
-    """根据操作系统，智能生成 PDF (Windows) 或 高清 PNG (Linux/云端)"""
+    """根据操作系统，智能生成 PDF (Windows) 或 完美防变形 PNG (Linux/云端)"""
     results = []
     logs = []
     today_mmdd = datetime.datetime.now().strftime('%m%d')
     sys_name = platform.system()
     
-    # --- 严格指定的数据区域，彻底剔除无关信息框选 ---
+    # 严格限定数据抓取边界
     sheets_info = [
         {"name": "每日-中粮贸易外部赊销限额使用监控表", "range": "$A$1:$G$30", "base_title": "中粮贸易外部赊销限额使用监控表"}
     ]
@@ -538,7 +535,7 @@ def generate_export_files_in_memory(file_stream):
             try:
                 app = win32com.client.Dispatch("Excel.Application")
             except:
-                app = win32com.client.Dispatch("Ket.Application") # 兼容 WPS
+                app = win32com.client.Dispatch("Ket.Application") 
                 
             app.Visible = False
             app.DisplayAlerts = False
@@ -565,7 +562,7 @@ def generate_export_files_in_memory(file_stream):
                     os.remove(temp_pdf_path)
                     logs.append(f"   ✅ 成功生成 PDF: {out_name}")
                 except Exception as e:
-                    logs.append(f"   ⚠️ 跳过 {s_info['name']} (可能不存在或渲染失败): {str(e)}")
+                    logs.append(f"   ⚠️ 跳过 {s_info['name']} (可能不存在): {str(e)}")
                     
             wb.Close(SaveChanges=False)
             app.Quit()
@@ -581,12 +578,12 @@ def generate_export_files_in_memory(file_stream):
             wb = openpyxl.load_workbook(file_stream, data_only=True)
             for s_info in sheets_info:
                 if s_info['name'] in wb.sheetnames:
-                    # 使用 1:1 绝对防变形映射引擎
+                    # ✨ 这里调用全新 1:1 防蜷缩重构渲染引擎
                     img_stream = render_sheet_range_to_image_stream(wb[s_info['name']], s_info['range'])
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
-                        logs.append(f"   ✅ 成功生成高级重构图片: {out_name}")
+                        logs.append(f"   ✅ 成功生成高级排版图片: {out_name}")
         except Exception as e:
             logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
             
