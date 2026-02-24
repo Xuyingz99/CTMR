@@ -257,6 +257,7 @@ def generate_word_in_memory(file_stream):
 def render_sheet_range_to_image_stream(ws, range_str):
     """
     终极版图片渲染器：强制数学映射物理比例，根除任何表格变形与内容蜷缩！
+    兼顾主表及正大额度表的多样化表头。
     """
     if not MATPLOTLIB_AVAILABLE:
         return None
@@ -272,7 +273,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
     if not os.path.exists(bold_path): bold_path = os.path.join(current_dir, 'msyhbd.ttf')
     custom_font_bold = FontProperties(fname=bold_path) if os.path.exists(bold_path) else custom_font_regular
 
-    # --- 1. 精确框选有效范围 (根除"是否填报"等冗余信息) ---
+    # --- 1. 精确框选有效范围 (根除冗余信息) ---
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
@@ -287,7 +288,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # --- 3. 智能推断行类型 (为了强制施加你的样式规则) ---
+    # --- 3. 智能推断行类型 (为了强制施加样式规则) ---
     row_types = {}
     for r in range(min_row, max_row + 1):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
@@ -297,7 +298,8 @@ def render_sheet_range_to_image_stream(ws, range_str):
             row_types[r] = 'title'
         elif "单位" in combined and "万元" in combined:
             row_types[r] = 'unit'
-        elif "序号" in combined or "业务单位" in combined or "赊销余额" in combined:
+        # 兼容正大表格的表头关键字（客户名称、额度等）
+        elif any(k in combined for k in ["序号", "业务单位", "赊销", "客户", "额度"]):
             row_types[r] = 'header'
         elif "合计" in combined:
             row_types[r] = 'total'
@@ -334,13 +336,12 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 # 汉字算 1.8 宽，英数算 1.0 宽
                 text_len = sum(1.8 if ord(ch) > 255 else 1.0 for ch in str(val))
                 w = text_len * 0.9 + 2.0 # 留出完美边距
-                if w > col_widths[c]: col_widths[c] = min(w, 20.0)
+                if w > col_widths[c]: col_widths[c] = min(w, 20.0) # 限制单列最大宽度防止畸形
 
-    # 强制压窄特定列宽度使排版更紧凑美观
+    # 强制压窄特定列宽度使排版紧凑
     col_widths[min_col] = 3.5 # 序号列
 
     # --- 6. 核心重构：绝对防变形画布映射引擎 ---
-    # 计算表格的内部虚拟总宽与总高
     W = sum(col_widths.values())
     H = sum(row_heights.values())
 
@@ -441,8 +442,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     else:
                         text = str(val).strip()
                 
-                # ------ 字体加粗规则 (严格遵循你的 5 条铁律) ------
-                # ①标题 ②表头 ③大区汇总 ④合计 -> 全程加粗；⑤其余 -> 降级不加粗
+                # ------ 字体加粗规则 (严格遵循要求) ------
                 is_bold = rtype in ['title', 'header', 'region', 'total']
                 
                 # ------ 对齐方式规则 ------
@@ -450,7 +450,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 valign = 'center'
                 if rtype == 'title': halign = 'center'
                 elif rtype == 'unit': halign = 'right'
-                elif rtype == 'region': halign = 'center' # 大区也强制居中更好看
+                elif rtype == 'region': halign = 'center' # 大区强制居中更好看
                 else:
                     excel_h = cell.alignment.horizontal if cell.alignment else None
                     if excel_h in ['left', 'right', 'center']: halign = excel_h
@@ -466,7 +466,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 if rtype == 'title': fs = base_font_size * 1.5
                 elif rtype == 'unit': fs = base_font_size * 0.9
 
-                # 防止溢出自动换行
+                # 防止长文本溢出导致重叠
                 if len(text) > (draw_w / 1.1):
                     wrap_w = max(1, int(draw_w / 1.1))
                     text = '\n'.join(textwrap.wrap(text, width=wrap_w))
@@ -499,7 +499,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
             x += cw
         y += rh
 
-    # 不再需要 tight_layout 改变坐标系，因为我们已经手动精准计算了！
     img_stream = io.BytesIO()
     fig.savefig(img_stream, format='png', dpi=300, facecolor=fig.get_facecolor(), edgecolor='none')
     plt.close(fig)
@@ -519,8 +518,14 @@ def generate_export_files_in_memory(file_stream):
     sheets_info = [
         {"name": "每日-中粮贸易外部赊销限额使用监控表", "range": "$A$1:$G$30", "base_title": "中粮贸易外部赊销限额使用监控表"}
     ]
-    if datetime.datetime.now().weekday() == 3: # 周四特供
+    
+    # ⬇️⬇️⬇️ 小白看这里：这里是控制正大表格生成的开关 ⬇️⬇️⬇️
+    # 当前为了试运行已改为 `if True:`，代表上传文件后每次都会生成。
+    # 试运行结束后，请把 `if True:` 删掉，替换为下面这行代码：
+    # if datetime.datetime.now().weekday() == 3:
+    if True: 
         sheets_info.append({"name": "每周-正大额度使用情况", "range": "$A$1:$L$34", "base_title": "正大额度使用情况"})
+    # ⬆️⬆️⬆️================================================⬆️⬆️⬆️
         
     if sys_name == 'Windows':
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_in:
