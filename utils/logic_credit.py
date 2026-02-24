@@ -69,7 +69,7 @@ def set_font_style(run, font_name='宋体', size=12, bold=False):
     run.font.bold = bold
 
 def generate_word_in_memory(file_stream):
-    """内存级生成 Word 报告，返回 Docx 字节流和分类别的字典用于页面展示"""
+    """内存级生成 Word 报告，返回 Docx 字节流和分类别的字典"""
     logs = []
     report_text_dict = {} 
     
@@ -225,7 +225,6 @@ def generate_word_in_memory(file_stream):
                 p = doc.add_paragraph()
                 p.paragraph_format.first_line_indent = Pt(24)
                 set_font_style(p.add_run(group_line), font_name='黑体', size=12, bold=True)
-                
                 center_text_block += f"{group_line}\n"
                 
                 sorted_rows = sorted(g_data['rows'], key=lambda r: r['逾期金额'], reverse=True)
@@ -252,19 +251,18 @@ def generate_word_in_memory(file_stream):
     return out_stream, report_text_dict, logs
 
 
-# ==================== 终极防蜷缩：1:1 自适应比例画布映射引擎 ====================
+# ==================== 核心重构：1:1 像素级格式/样式/对齐渲染引擎 ====================
 
 def render_sheet_range_to_image_stream(ws, range_str):
     """
-    废除 A4 强制挤压，采用真实物理比例尺动态建图。
-    绝对保证正大12列长表和常规7列表均不蜷缩、字体居中、线框分明！
+    针对复合表头、合并居中、百分比、颜色提取、动态裁剪的 100% 对齐重构版
     """
     if not MATPLOTLIB_AVAILABLE:
         return None
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # 1. 挂载字体库
+    # 1. 挂载物理字体库 (彻底解决加粗失效问题)
     regular_path = os.path.join(current_dir, 'msyh.ttc')
     if not os.path.exists(regular_path): regular_path = os.path.join(current_dir, 'msyh.ttf')
     custom_font_regular = FontProperties(fname=regular_path) if os.path.exists(regular_path) else None
@@ -273,11 +271,20 @@ def render_sheet_range_to_image_stream(ws, range_str):
     if not os.path.exists(bold_path): bold_path = os.path.join(current_dir, 'msyhbd.ttf')
     custom_font_bold = FontProperties(fname=bold_path) if os.path.exists(bold_path) else custom_font_regular
 
-    # 2. 精确框选有效范围 (剔除“大区是否填报”等冗余区域)
+    # 2. 动态检测并剔除底部“是否填报”等冗余行
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    # 3. 映射所有合并单元格
+    actual_max_row = max_row
+    for r in range(min_row, max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
+        combined = "".join(row_vals)
+        if "是否填报" in combined or "填报说明" in combined:
+            actual_max_row = r - 1 # 截断当前行及以下所有内容
+            break
+    max_row = actual_max_row
+
+    # 3. 构建所有合并单元格的坐标网络 (确保复合表头精准居中)
     merged_dict = {}
     for mr in ws.merged_cells.ranges:
         if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= max_row and mr.max_row >= min_row:
@@ -288,7 +295,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # 4. 文本嗅探与层级打标 (针对正大与主表双重兼容)
+    # 4. 智能推断行层级 (驱动加粗与样式规则)
     row_types = {}
     for r in range(min_row, max_row + 1):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
@@ -298,45 +305,41 @@ def render_sheet_range_to_image_stream(ws, range_str):
             row_types[r] = 'title'
         elif "制表单位" in combined or "截止时间" in combined:
             row_types[r] = 'subtitle'
-        elif "单位" in combined and "万元" in combined:
+        elif "单位" in combined and ("万元" in combined or "万" in combined):
             row_types[r] = 'unit'
-        # 兼容两种表的表头特征
-        elif any(k in combined for k in ["序号", "业务单位", "客户名称", "使用率", "赊销余额"]):
-            if any("大区" in v for v in row_vals) and "序号" not in combined:
-                row_types[r] = 'region'
-            else:
-                row_types[r] = 'header'
         elif "小计" in combined:
             row_types[r] = 'subtotal'
         elif "合计" in combined or "总计" in combined:
             row_types[r] = 'total'
-        elif any("大区" in v for v in row_vals):
+        elif r <= min_row + 4 and any(k in combined for k in ["序号", "业务单位", "客户名称", "使用率", "赊销", "额度"]):
+            # 表头区往往占据前几行
+            row_types[r] = 'header'
+        elif row_vals[0] == "" and len(row_vals) > 1 and "大区" in row_vals[1]:
+            # 主表中的大区汇总行特征
             row_types[r] = 'region'
         else:
             row_types[r] = 'data'
 
-    # 5. 百分比列智能推断 (解决小数畸变)
+    # 5. 百分比列智能探测 (解决 PDF 中 50% 变成小数的痛点)
     col_is_percent = {c: False for c in range(min_col, max_col + 1)}
     for c in range(min_col, max_col + 1):
-        for r in range(min_row, min_row + 5):
+        for r in range(min_row, min_row + 6): 
             v = str(ws.cell(row=r, column=c).value or "")
             if "率" in v or "占比" in v or "%" in v:
                 col_is_percent[c] = True
                 break
 
-    # 6. 自适应动态宽高计算 (根除排版挤压核心！)
+    # 6. 计算物理最佳行列比例 (根除挤压变形)
     col_widths = {c: 4.0 for c in range(min_col, max_col + 1)}
     row_heights = {}
     
-    # 根据行类型配置行高
     for r in range(min_row, max_row + 1):
-        if row_types[r] == 'title': row_heights[r] = 3.5
+        if row_types[r] == 'title': row_heights[r] = 4.0
         elif row_types[r] == 'subtitle': row_heights[r] = 2.0
         elif row_types[r] == 'unit': row_heights[r] = 1.5
-        elif row_types[r] == 'header': row_heights[r] = 3.0
-        else: row_heights[r] = 2.2
+        elif row_types[r] == 'header': row_heights[r] = 3.2
+        else: row_heights[r] = 2.4
 
-    # 智能预估列宽
     for r in range(min_row, max_row + 1):
         if row_types[r] in ['title', 'subtitle', 'unit']: continue
         for c in range(min_col, max_col + 1):
@@ -347,27 +350,40 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 w = text_len * 0.9 + 1.5 
                 if w > col_widths[c]: col_widths[c] = min(w, 22.0)
 
-    # 特定列强制美化压缩
-    col_widths[min_col] = 3.0 # 序号极窄
+    # 针对窄列优化视觉效果
+    col_widths[min_col] = 3.0 # 序号列
 
-    # ================= 完美自适应物理画板生成 =================
+    # --- 7. 创建数学绝对映射坐标系 (锁定A4物理极限) ---
     W = sum(col_widths.values())
     H = sum(row_heights.values())
 
-    # 物理比例尺：1 逻辑单元 = 0.16 英寸 (此系数保证 300DPI 下文字饱满清晰)
-    scale = 0.16 
-    fig = plt.figure(figsize=(W * scale, H * scale + 0.5), dpi=300)
+    A4_W, A4_H = 8.27, 11.69
+    margin_x, margin_y = 0.4, 0.6
+    
+    max_w_in = A4_W - 2 * margin_x
+    max_h_in = A4_H - 2 * margin_y
+
+    # 动态缩放系数 (保证宽高比例永远锁定为 1:1)
+    S = max_w_in / W
+    if H * S > max_h_in: 
+        S = max_h_in / H 
+
+    W_in, H_in = W * S, H * S
+
+    fig = plt.figure(figsize=(A4_W, A4_H), dpi=300)
     fig.patch.set_facecolor('white')
 
-    ax = fig.add_axes([0, 0, 1, 1])
+    # 将图表原封不动嵌入 A4 中心
+    left = (A4_W - W_in) / 2 / A4_W
+    bottom = (A4_H - margin_y - H_in) / A4_H
+    ax = fig.add_axes([left, bottom, W_in / A4_W, H_in / A4_H])
     ax.set_xlim(0, W)
-    ax.set_ylim(H, 0) # 翻转 Y 轴，符合从上到下绘制直觉
+    ax.set_ylim(H, 0) # Y 轴反转，符合人类阅读顺序
     ax.axis('off')
 
-    # 计算完美字号 (占行高的恰当比例)
-    base_fs = 9.0 
+    base_fs = 2.5 * S * 72 * 0.45 
 
-    # 7. 像素级渲染循环
+    # --- 8. 逐像素矩阵渲染 ---
     y = 0
     for r in range(min_row, max_row + 1):
         x = 0
@@ -380,69 +396,72 @@ def render_sheet_range_to_image_stream(ws, range_str):
             is_merged_top_left = True
             draw_w, draw_h = cw, rh
             
-            # 合并单元格跳过逻辑
             if (r, c) in merged_dict:
                 info = merged_dict[(r, c)]
                 if (r, c) != info['top_left']:
                     is_merged_top_left = False 
                 else:
+                    # 合并单元格精准求和宽高
                     draw_w = sum(col_widths.get(mc, 4.0) for mc in range(info['top_left'][1], info['bottom_right'][1] + 1))
-                    draw_h = sum(row_heights.get(mr, 2.5) for mr in range(info['top_left'][0], info['bottom_right'][0] + 1))
+                    draw_h = sum(row_heights.get(mr, 2.4) for mr in range(info['top_left'][0], info['bottom_right'][0] + 1))
 
             if is_merged_top_left:
                 cell = ws.cell(row=r, column=c)
                 
-                # --- A. 层级底色复刻与线条渲染 ---
+                # --- A. 100% 提取并还原原生 Excel 色彩 ---
                 bg_color = '#FFFFFF'
-                if rtype == 'header': bg_color = '#EAECEF' # 浅灰蓝色
-                elif rtype == 'region': bg_color = '#DCE6F1' # 蓝灰色 (大区)
-                elif rtype == 'subtotal': bg_color = '#FCE4D6' # 浅橙色 (小计)
-                elif rtype == 'total': bg_color = '#F8CBAD' # 深橙色 (合计)
-                elif rtype in ['title', 'subtitle', 'unit']: bg_color = '#FFFFFF'
-                else:
+                if rtype not in ['title', 'subtitle', 'unit']:
                     if cell.fill and cell.fill.patternType == 'solid' and cell.fill.start_color.rgb:
                         rgb = str(cell.fill.start_color.rgb)
-                        if len(rgb) == 8 and rgb != '00000000': bg_color = '#' + rgb[2:] 
+                        if len(rgb) == 8 and rgb != '00000000': 
+                            bg_color = '#' + rgb[2:] 
 
-                # 表头外的附属文本行不画边框，显得高级
+                # 表格内外线条控制
                 lw = 0 if rtype in ['title', 'subtitle', 'unit'] else 0.8
                 rect = patches.Rectangle((x, y), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=lw)
                 ax.add_patch(rect)
                 
-                # --- B. 数据格式化转换器 ---
+                # --- B. 数据格式化转换 (消灭小数、补全千分位) ---
                 val = cell.value
                 fmt = cell.number_format or "General"
                 text = ""
                 
                 if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
-                        # PDF 要求百分比展示为 50%、88% 等格式
                         if '%' in fmt or col_is_percent[c]:
-                            text = f"{val:.0%}"
-                        else:
-                            # 金额强加千分位，如 82,436
+                            # 还原百分比
+                            if '.00' in fmt: text = f"{val:.2%}"
+                            elif '.0' in fmt: text = f"{val:.1%}"
+                            else: text = f"{val:.0%}"
+                        elif ',' in fmt or val >= 1000 or val <= -1000:
+                            # 还原千分位
                             if isinstance(val, float) and not val.is_integer():
                                 text = f"{val:,.2f}".rstrip('0').rstrip('.')
                             else:
                                 text = f"{val:,.0f}"
+                        else:
+                            if isinstance(val, float):
+                                text = f"{val:.2f}".rstrip('0').rstrip('.')
+                            else:
+                                text = str(val)
                     elif isinstance(val, datetime.datetime):
-                        text = val.strftime('%Y-%m-%d')
+                        if "年" in fmt: text = val.strftime('%Y年%m月%d日')
+                        else: text = val.strftime('%Y-%m-%d')
                     else:
                         text = str(val).strip()
                 
-                # --- C. 层级字体加粗规则 ---
-                # PDF 规定：标题、表头、大区行、小计、合计必须强加粗！
-                is_bold = rtype in ['title', 'header', 'region', 'subtotal', 'total']
+                # --- C. 字体加粗与对齐铁律判定 ---
+                # 规则：标题、表头、小计、总计、大区行必须强制调用加粗字体！
+                is_bold = rtype in ['title', 'header', 'subtotal', 'total', 'region']
                 
-                # --- D. 对齐方式定位 ---
                 halign = 'center'
                 valign = 'center'
                 
                 if rtype == 'title': halign = 'center'
-                elif "制表单位" in text: halign = 'left'
-                elif "截止时间" in text or rtype == 'unit': halign = 'right'
-                elif rtype == 'region' and W < 40: halign = 'center'
+                elif rtype == 'unit': halign = 'right'
+                elif rtype == 'subtitle': halign = 'left'
                 else:
+                    # 继承 Excel 原生对齐方式
                     excel_h = cell.alignment.horizontal if cell.alignment else None
                     if excel_h in ['left', 'right', 'center']: halign = excel_h
                     
@@ -451,25 +470,25 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 elif halign == 'right': text_x = x + draw_w - pad_x
                 else: text_x = x + draw_w / 2
                 
-                # 顶部/中部/底部对齐
-                if rtype == 'subtitle' or rtype == 'unit': 
+                if rtype in ['subtitle', 'unit']: 
                     valign = 'bottom'
                     text_y = y + draw_h - 0.2
                 else:
                     valign = 'center'
                     text_y = y + draw_h / 2
                 
-                # 字号阶梯分配
+                # 层级字号适配
                 fs = base_fs
                 if rtype == 'title': fs = base_fs * 1.5
                 elif rtype in ['subtitle', 'unit']: fs = base_fs * 0.95
 
-                # 文本过长防止溢出
-                if len(text) > (draw_w / 1.1):
-                    wrap_w = max(1, int(draw_w / 1.1))
-                    text = '\n'.join(textwrap.wrap(text, width=wrap_w))
+                # 防止超长复合表头内容溢出 (信任原生 \n，超宽则强制打断)
+                if isinstance(text, str):
+                    if '\n' not in text and len(text) > (draw_w / 1.1):
+                        wrap_w = max(1, int(draw_w / 1.1))
+                        text = '\n'.join(textwrap.wrap(text, width=wrap_w))
                     
-                # --- E. 物理渲染投射 ---
+                # --- D. 调用底层引擎着墨 ---
                 if text:
                     kwargs = {
                         'ha': halign,
@@ -505,24 +524,22 @@ def render_sheet_range_to_image_stream(ws, range_str):
 # ==================== 导出文件生成逻辑 ====================
 
 def generate_export_files_in_memory(file_stream):
-    """根据操作系统，智能生成 PDF (Windows) 或 完美防变形 PNG (Linux/云端)"""
+    """根据操作系统，智能生成 PDF 或高清 1:1 格式对齐 PNG"""
     results = []
     logs = []
     today_mmdd = datetime.datetime.now().strftime('%m%d')
     sys_name = platform.system()
     
-    # 严格限定数据抓取边界
     sheets_info = [
         {"name": "每日-中粮贸易外部赊销限额使用监控表", "range": "$A$1:$G$30", "base_title": "中粮贸易外部赊销限额使用监控表"}
     ]
     
-    # ⬇️⬇️⬇️ 小白看这里：这里是控制正大表格生成的开关 ⬇️⬇️⬇️
-    # 当前为了试运行已改为 `if True:`，代表上传文件后每次都会生成。
-    # 试运行结束后，请把 `if True:` 删掉，替换为下面这行代码：
-    # if datetime.datetime.now().weekday() == 3:
+    # ⬇️⬇️⬇️ 控制正大表格生成时间的开关 ⬇️⬇️⬇️
+    # 试运行期间为了方便你随时看到效果，设置为 True。
+    # 上线后请替换回: if datetime.datetime.now().weekday() == 3:
     if True: 
         sheets_info.append({"name": "每周-正大额度使用情况", "range": "$A$1:$L$34", "base_title": "正大额度使用情况"})
-    # ⬆️⬆️⬆️================================================⬆️⬆️⬆️
+    # ⬆️⬆️⬆️ ============================== ⬆️⬆️⬆️
         
     if sys_name == 'Windows':
         with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_in:
@@ -562,7 +579,7 @@ def generate_export_files_in_memory(file_stream):
                     os.remove(temp_pdf_path)
                     logs.append(f"   ✅ 成功生成 PDF: {out_name}")
                 except Exception as e:
-                    logs.append(f"   ⚠️ 跳过 {s_info['name']} (可能不存在): {str(e)}")
+                    logs.append(f"   ⚠️ 跳过 {s_info['name']}: {str(e)}")
                     
             wb.Close(SaveChanges=False)
             app.Quit()
@@ -578,12 +595,12 @@ def generate_export_files_in_memory(file_stream):
             wb = openpyxl.load_workbook(file_stream, data_only=True)
             for s_info in sheets_info:
                 if s_info['name'] in wb.sheetnames:
-                    # ✨ 这里调用全新 1:1 防蜷缩重构渲染引擎
+                    # ✨ 调用全新的 1:1 绝对坐标防变形渲染器
                     img_stream = render_sheet_range_to_image_stream(wb[s_info['name']], s_info['range'])
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
-                        logs.append(f"   ✅ 成功生成高级排版图片: {out_name}")
+                        logs.append(f"   ✅ 成功生成完美复刻版图片: {out_name}")
         except Exception as e:
             logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
             
