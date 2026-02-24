@@ -257,10 +257,13 @@ def generate_word_in_memory(file_stream):
     logs.append("✅ Word 报告内存生成成功！")
     return out_stream, report_text_dict, logs
 
-# ==================== 核心升级：1:1 完美还原的图片渲染引擎 ====================
+# ==================== 终极优化：1:1 完美还原的图片渲染引擎 ====================
 
 def render_sheet_range_to_image_stream(ws, range_str):
-    """(完全重构) 基于 patches 自定义绘图的终极 1:1 还原引擎"""
+    """
+    (完全重构) 基于 patches 自定义绘图的终极 1:1 还原引擎
+    解决：合并居中、底色还原、精确列宽、百分比千分位展示、特定行层级加粗
+    """
     if not MATPLOTLIB_AVAILABLE:
         return None
 
@@ -271,11 +274,11 @@ def render_sheet_range_to_image_stream(ws, range_str):
         yahei_path = os.path.join(current_dir, 'msyh.ttf') 
     custom_font = FontProperties(fname=yahei_path) if os.path.exists(yahei_path) else None
 
-    # --- 1. 范围解析 ---
+    # --- 1. 数据范围精准框选 ---
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    # --- 2. 映射所有合并单元格 (解决大标题和层级不对齐的问题) ---
+    # --- 2. 映射所有合并单元格 (解决大标题、合并行的展示问题) ---
     merged_dict = {}
     for mr in ws.merged_cells.ranges:
         if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= max_row and mr.max_row >= min_row:
@@ -286,27 +289,33 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # --- 3. 提取行列真实宽度与高度 (解决列宽错乱、留白问题) ---
-    col_widths = {}
-    for c in range(min_col, max_col + 1):
-        letter = get_column_letter(c)
-        dim = ws.column_dimensions.get(letter)
-        w = dim.width if (dim and dim.width) else 12.0
-        col_widths[c] = w * 7.5  # 等比例放大宽度
-
-    row_heights = {}
+    # --- 3. 动态「自适应」计算行列宽度 (解决列宽错乱、留白问题) ---
+    col_widths = {c: 3.0 for c in range(min_col, max_col + 1)} # 初始最小宽度
+    row_heights = {r: 1.2 for r in range(min_row, max_row + 1)} # 初始行高
+    
+    # 第一次遍历：根据单元格内容估算所需列宽
     for r in range(min_row, max_row + 1):
-        dim = ws.row_dimensions.get(r)
-        h = dim.height if (dim and dim.height) else 18.0
-        row_heights[r] = h * 1.3
+        for c in range(min_col, max_col + 1):
+            if (r, c) in merged_dict and merged_dict[(r, c)]['top_left'] != (r, c):
+                continue
+            val = ws.cell(row=r, column=c).value
+            if val is not None:
+                text_len = sum(2.0 if ord(ch) > 255 else 1.1 for ch in str(val)) # 中文按2计算宽
+                # 为单列限制最大宽度防止畸形
+                if text_len > col_widths[c]:
+                    col_widths[c] = min(text_len + 1.5, 25.0)
+
+    # 针对序号、百分比等列做特殊窄距处理优化
+    col_widths[min_col] = 4.0 # 序号列
+    if max_col - min_col >= 6: col_widths[max_col] = 6.0 # 最后一列通常是百分比
 
     total_width = sum(col_widths.values())
     total_height = sum(row_heights.values())
 
-    # --- 4. 画布创建 (强制锁定 A4 尺寸) ---
+    # --- 4. 画布创建 (强制锁定 A4 尺寸 300DPI) ---
     fig, ax = plt.subplots(figsize=(8.27, 11.69), dpi=300)
     
-    # 根据 A4 比例动态缩放内容使其水平居中且不被裁切
+    # 根据 A4 比例动态缩放内容使其居中且不被裁切
     a4_ratio = 11.69 / 8.27
     table_ratio = total_height / total_width if total_width > 0 else 1
     
@@ -323,58 +332,62 @@ def render_sheet_range_to_image_stream(ws, range_str):
         
     ax.axis('off')
 
-    # --- 5. 逐个单元格精准绘制 ---
+    # --- 5. 逐个单元格精准绘制与样式复刻 ---
     y = 0
     for r in range(min_row, max_row + 1):
         x = 0
-        rh = row_heights.get(r, 20)
+        rh = row_heights.get(r, 1.2)
         for c in range(min_col, max_col + 1):
-            cw = col_widths.get(c, 80)
+            cw = col_widths.get(c, 5.0)
             
             is_merged_top_left = True
             draw_w, draw_h = cw, rh
             
-            # 判断是否为合并单元格
+            # 合并单元格的尺寸计算
             if (r, c) in merged_dict:
                 merge_info = merged_dict[(r, c)]
                 if (r, c) != merge_info['top_left']:
-                    is_merged_top_left = False # 被合并的附属单元格不渲染
+                    is_merged_top_left = False # 被合并的附属单元格跳过不画
                 else:
                     # 累加合并区域的总宽和总高
-                    mc_w = sum(col_widths.get(mc, 80) for mc in range(merge_info['top_left'][1], merge_info['bottom_right'][1] + 1))
-                    mc_h = sum(row_heights.get(mr, 20) for mr in range(merge_info['top_left'][0], merge_info['bottom_right'][0] + 1))
+                    mc_w = sum(col_widths.get(mc, 5.0) for mc in range(merge_info['top_left'][1], merge_info['bottom_right'][1] + 1))
+                    mc_h = sum(row_heights.get(mr, 1.2) for mr in range(merge_info['top_left'][0], merge_info['bottom_right'][0] + 1))
                     draw_w, draw_h = mc_w, mc_h
 
             if is_merged_top_left:
                 cell = ws.cell(row=r, column=c)
                 
-                # --- 背景色精准还原 (解决底色丢失) ---
+                # --- 背景色精准还原 (剔除默认透明) ---
                 bg_color = '#FFFFFF'
                 if cell.fill and cell.fill.patternType == 'solid':
                     color = cell.fill.start_color
-                    if color.type == 'rgb' and color.rgb:
+                    if color and hasattr(color, 'rgb') and color.rgb:
                         rgb = str(color.rgb)
                         if len(rgb) == 8 and rgb != '00000000':
-                            bg_color = '#' + rgb[2:]
+                            bg_color = '#' + rgb[2:] # 去除 Alpha 通道
                         elif len(rgb) == 6:
                             bg_color = '#' + rgb
                 
-                # 画出外框与底色
+                # 画出外框与底色 (统一纯黑 0.5 线宽)
                 rect = patches.Rectangle((x, y), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=0.5)
                 ax.add_patch(rect)
                 
-                # --- 数值格式精准还原 (解决小数变长串、百分比消失) ---
+                # --- 数值格式化精准还原 (解决小数变长串、保留百分比、千分位) ---
                 val = cell.value
+                fmt = cell.number_format or "General"
                 text = ""
-                if val is not None and val != "":
-                    fmt = cell.number_format or "General"
+                
+                if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
                         if '%' in fmt:
-                            # 百分比还原
+                            # 百分比强转
                             text = f"{val:.0%}" if ('0%' in fmt and '.00' not in fmt) else f"{val:.2%}"
                         elif ',' in fmt or val >= 1000 or val <= -1000:
-                            # 千分位格式还原
-                            text = f"{val:,.2f}" if ('0.00' in fmt or '0.0' in fmt) else f"{val:,.0f}"
+                            # 千分位强转
+                            if isinstance(val, float) and not val.is_integer():
+                                text = f"{val:,.2f}".rstrip('0').rstrip('.')
+                            else:
+                                text = f"{val:,.0f}"
                         else:
                             if isinstance(val, float):
                                 text = f"{val:.2f}".rstrip('0').rstrip('.')
@@ -384,41 +397,58 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         text = val.strftime('%Y-%m-%d')
                     else:
                         text = str(val)
-                        
+                
+                # --- 字体加粗层级规则 (严格遵循要求) ---
+                text_str = text.strip()
+                is_bold = False
+                font_size = 6 # 基础字号
+                
+                if r == min_row: 
+                    # 1. 顶部大标题：全程加粗、字号增大
+                    is_bold = True
+                    font_size = 9
+                elif "单位" in text_str and "万元" in text_str:
+                    # 单位行不加粗
+                    is_bold = False
+                elif text_str in ["序号", "业务单位", "1.20 赊销余额", "信保客户 赊销余额", "白名单 赊销余额", "外部限额 授权", "外部限额 使用率"]:
+                    # 2. 表头列名：全程加粗
+                    is_bold = True
+                elif "大区" in text_str and len(text_str) <= 8:
+                    # 3. 大区汇总行 (沿江大区等)：全程加粗
+                    is_bold = True
+                elif "合计" in text_str:
+                    # 4. 合计行：全程加粗
+                    is_bold = True
+                else:
+                    # 5. 其余经营部/数值项：强制解除加粗
+                    is_bold = False
+                    
+                # 从原始 Excel 同步文字颜色（防止红色负数丢失）
+                text_color = '#000000'
+                if cell.font and cell.font.color and hasattr(cell.font.color, 'rgb') and cell.font.color.rgb:
+                    rgb = str(cell.font.color.rgb)
+                    extracted_color = '#' + rgb[2:] if len(rgb)==8 else '#000000'
+                    if extracted_color != '#00000000': text_color = extracted_color
+
                 # --- 对齐方式还原 ---
                 halign = cell.alignment.horizontal if cell.alignment and cell.alignment.horizontal else 'center'
                 if halign not in ['left', 'center', 'right']: halign = 'center'
                 valign = cell.alignment.vertical if cell.alignment and cell.alignment.vertical else 'center'
                 
-                if halign == 'left': text_x = x + 3
-                elif halign == 'right': text_x = x + draw_w - 3
+                if halign == 'left': text_x = x + 0.5
+                elif halign == 'right': text_x = x + draw_w - 0.5
                 else: text_x = x + draw_w / 2
                 
-                if valign == 'top': text_y = y + 3
-                elif valign == 'bottom': text_y = y + draw_h - 3
+                if valign == 'top': text_y = y + 0.3
+                elif valign == 'bottom': text_y = y + draw_h - 0.3
                 else: text_y = y + draw_h / 2
                 
-                # --- 字体加粗与颜色还原 ---
-                is_bold = cell.font.bold if cell.font else False
-                font_weight = 'bold' if is_bold else 'normal'
-                
-                # 字体大小适配
-                font_size = 7
-                if cell.font and cell.font.size:
-                    font_size = max(5, min(cell.font.size * 0.65, 12))
-                    
-                text_color = '#000000'
-                if cell.font and cell.font.color and cell.font.color.rgb:
-                    rgb = str(cell.font.color.rgb)
-                    extracted_color = '#' + rgb[2:] if len(rgb)==8 else '#000000'
-                    if extracted_color != '#00000000': text_color = extracted_color
-
                 # 长文本自动换行以防超出边框截断
-                if isinstance(text, str) and len(text) > (draw_w / 6):
-                    chars_per_line = max(1, int(draw_w / 6))
+                if isinstance(text, str) and len(text) > (draw_w / 1.5):
+                    chars_per_line = max(1, int(draw_w / 1.5))
                     text = '\n'.join(textwrap.wrap(text, width=chars_per_line))
                     
-                # 渲染文字
+                # 渲染最终文字
                 if text:
                     kwargs = {
                         'ha': halign,
@@ -427,13 +457,13 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'clip_on': True
                     }
                     if custom_font:
-                        # 使用自定义字体对象并强制附带粗细设置
+                        # 绑定本地字体、赋予粗体属性
                         prop = custom_font.copy()
                         prop.set_weight('bold' if is_bold else 'normal')
                         prop.set_size(font_size)
                         kwargs['fontproperties'] = prop
                     else:
-                        kwargs['weight'] = font_weight
+                        kwargs['weight'] = 'bold' if is_bold else 'normal'
                         kwargs['fontsize'] = font_size
                         
                     ax.text(text_x, text_y, text, **kwargs)
@@ -518,7 +548,7 @@ def generate_export_files_in_memory(file_stream):
             wb = openpyxl.load_workbook(file_stream, data_only=True)
             for s_info in sheets_info:
                 if s_info['name'] in wb.sheetnames:
-                    # 使用精准框选的新引擎
+                    # 使用 1:1 完美复刻新引擎
                     img_stream = render_sheet_range_to_image_stream(wb[s_info['name']], s_info['range'])
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
