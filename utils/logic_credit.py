@@ -68,7 +68,7 @@ def set_font_style(run, font_name='宋体', size=12, bold=False):
     run.font.bold = bold
 
 def generate_word_in_memory(file_stream):
-    """内存级生成 Word 报告"""
+    """内存级生成 Word 报告，返回 Docx 字节流和分类别的字典用于页面展示"""
     logs = []
     report_text_dict = {} 
     
@@ -253,16 +253,11 @@ def generate_word_in_memory(file_stream):
 # ==================== 终极防蜷缩：100%纯物理镜像渲染引擎 ====================
 
 def render_sheet_range_to_image_stream(ws, range_str):
-    """
-    废除一切自主推断！完全依附 Excel 原生格式进行 1:1 像素投射。
-    解决：红色字体、加粗丢失、标题/时间剥离丢失、非表头序号底色等问题。
-    """
     if not MATPLOTLIB_AVAILABLE:
         return None
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # 1. 严格挂载字体库
     regular_path = os.path.join(current_dir, 'msyh.ttc')
     if not os.path.exists(regular_path): regular_path = os.path.join(current_dir, 'msyh.ttf')
     custom_font_regular = FontProperties(fname=regular_path) if os.path.exists(regular_path) else None
@@ -271,11 +266,11 @@ def render_sheet_range_to_image_stream(ws, range_str):
     if not os.path.exists(bold_path): bold_path = os.path.join(current_dir, 'msyhbd.ttf')
     custom_font_bold = FontProperties(fname=bold_path) if os.path.exists(bold_path) else custom_font_regular
 
-    # 2. 初始框选范围
+    # 1. 初始框选范围
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    # 3. 动态截断：物理切除底部的冗余复选框行
+    # 2. 动态截断：物理切除底部的冗余复选框行
     actual_max_row = max_row
     for r in range(min_row, max_row + 1):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
@@ -283,15 +278,21 @@ def render_sheet_range_to_image_stream(ws, range_str):
         if "是否填报" in combined or "填报说明" in combined:
             actual_max_row = r - 1 
             break
+            
+    # 【优化项 2】向上倒推，彻底切除尾部的纯空白单元格行 (解决28行下面多一行的空白问题)
+    while actual_max_row >= min_row:
+        row_vals = [str(ws.cell(row=actual_max_row, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
+        if any(row_vals): 
+            break
+        actual_max_row -= 1
 
-    # 4. 动态去除完全空白的列 (彻底删除冗余空白列)
+    # 3. 动态去除完全空白的列
     valid_cols_set = set()
     for r in range(min_row, actual_max_row + 1):
         for c in range(min_col, max_col + 1):
             val = ws.cell(row=r, column=c).value
             if val is not None and str(val).strip() != "":
                 valid_cols_set.add(c)
-                # 必须将合并单元格覆盖的附属列也加入有效列
                 for mr in ws.merged_cells.ranges:
                     if mr.min_row <= r <= mr.max_row and mr.min_col <= c <= mr.max_col:
                         for mc in range(mr.min_col, mr.max_col + 1):
@@ -300,7 +301,7 @@ def render_sheet_range_to_image_stream(ws, range_str):
     valid_cols = sorted(list(valid_cols_set))
     if not valid_cols: return None
 
-    # 5. 映射所有合并单元格坐标网络
+    # 4. 映射合并单元格
     merged_dict = {}
     for mr in ws.merged_cells.ranges:
         if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= actual_max_row and mr.max_row >= min_row:
@@ -311,7 +312,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         'bottom_right': (mr.max_row, mr.max_col)
                     }
 
-    # 6. 定位表格的主体范围 (用于边框与对齐控制)
     header_start_row = min_row
     for r in range(min_row, actual_max_row + 1):
         combined = "".join([str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols])
@@ -319,28 +319,55 @@ def render_sheet_range_to_image_stream(ws, range_str):
             header_start_row = r
             break
 
-    # 7. 计算物理最佳行列比例
-    col_widths = {c: 4.0 for c in valid_cols}
-    row_heights = {}
-    row_types = {}
+    # 提取表头外的内容
+    title_text = ""
+    author_text = ""
+    date_text = ""
+    unit_text = ""
     
+    for r in range(min_row, actual_max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
+        combined = "".join(row_vals)
+        if "汇总表" in combined or "监控表" in combined:
+            if not title_text: title_text = next((v for v in row_vals if "表" in v), combined)
+        elif "制表单位" in combined:
+            author_text = next((v for v in row_vals if "制表单位" in v), combined)
+        elif "截止时间" in combined:
+            date_text = next((v for v in row_vals if "截止时间" in v), combined)
+        elif "单位" in combined and ("万元" in combined or "万" in combined):
+            unit_text = next((v for v in row_vals if "单位" in v), combined)
+
+    header_end_row = header_start_row
+    for r in range(header_start_row, actual_max_row + 1):
+        row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
+        combined = "".join(row_vals)
+        if "沿江大区" in combined or "华东经营部" in combined or row_vals[0] == "1":
+            header_end_row = r - 1
+            break
+
+    # 5. 确定行类型 (特别标记跳过被提取的制表单位)
+    row_types = {}
+    row_heights = {}
     for r in range(min_row, actual_max_row + 1):
         combined = "".join([str(ws.cell(row=r, column=c).value or "").strip() for c in valid_cols])
         
-        # 将表格上方/下方的零散信息定义为 meta（无边框层）
-        if r < header_start_row:
+        # 【优化项 3】将制表单位所在行设置为跳过，不再在上方占据网格高度
+        if "制表单位" in combined:
+            row_types[r] = 'skip'
+            row_heights[r] = 0.0
+        elif r < header_start_row:
             row_types[r] = 'meta'
             row_heights[r] = 4.0 if "表" in combined else 2.0
         elif r > header_start_row + 5 and "单位" in combined and "万" in combined and "合计" not in combined:
             row_types[r] = 'meta'
             row_heights[r] = 1.5
         else:
-            row_types[r] = 'grid' # 表格核心数据区
-            row_heights[r] = 3.2 if r <= header_start_row + 1 else 2.4
+            row_types[r] = 'grid' 
+            row_heights[r] = 3.2 if r <= header_end_row else 2.4
 
-    # 文本长度探测列宽
+    col_widths = {c: 4.0 for c in valid_cols}
     for r in range(min_row, actual_max_row + 1):
-        if row_types[r] == 'meta': continue
+        if row_types[r] in ['meta', 'skip']: continue
         for c in valid_cols:
             is_spanned = False
             for mr in ws.merged_cells.ranges:
@@ -356,16 +383,15 @@ def render_sheet_range_to_image_stream(ws, range_str):
 
     col_widths[valid_cols[0]] = max(3.5, col_widths[valid_cols[0]])
 
-    # 百分比探测
+    # 【优化项 1】精确狙击：仅允许指定的两列转换百分号，严禁乱加
     col_is_percent = {c: False for c in valid_cols}
     for c in valid_cols:
-        for r in range(header_start_row, header_start_row + 3):
-            v = str(ws.cell(row=r, column=c).value or "")
-            if "率" in v or "占比" in v or "%" in v:
+        for r in range(header_start_row, header_start_row + 4):
+            v = str(ws.cell(row=r, column=c).value or "").replace("\\n", "").replace(" ", "").replace("\n", "")
+            if "赊销余额/授信额度" in v or "出库通知单/授信额度" in v or "使用率" in v:
                 col_is_percent[c] = True
                 break
 
-    # 8. 建立高清 500 DPI 绝对坐标画板
     W_grid = sum(col_widths.values())
     H_grid = sum(row_heights.values())
 
@@ -374,23 +400,39 @@ def render_sheet_range_to_image_stream(ws, range_str):
     
     max_w_in = A4_W - 2 * margin_x
     S = max_w_in / W_grid 
-    H_in = H_grid * S
     
-    # 动态适应纸张长度
+    # 增加底部留白，容纳转移到底部的单位和落款
+    H_total_virtual = H_grid + 16.0 
+    H_in = H_total_virtual * S
+    
     Final_H = max(A4_H, H_in + 1.0)
-    fig = plt.figure(figsize=(A4_W, Final_H), dpi=500) # 🔥 500DPI解决模糊问题
+    
+    # 【优化项 4】暴力提升清晰度：DPI从300拉满至800
+    fig = plt.figure(figsize=(A4_W, Final_H), dpi=800) 
     fig.patch.set_facecolor('white')
 
     ax = fig.add_axes([margin_x / A4_W, (Final_H - H_in - margin_y) / Final_H, max_w_in / A4_W, H_in / Final_H])
     ax.set_xlim(0, W_grid)
-    ax.set_ylim(H_grid, 0)
+    ax.set_ylim(H_total_virtual, 0)
     ax.axis('off')
 
     base_fs = 2.5 * S * 72 * 0.42 
 
-    # 9. 逐像素矩阵渲染
-    y_curr = 0
-    for r in range(min_row, actual_max_row + 1):
+    # --- 独立绘制大标题与截止时间 ---
+    if title_text:
+        prop_title = custom_font_bold.copy() if custom_font_bold else custom_font_regular
+        if prop_title: prop_title.set_size(base_fs * 1.5)
+        ax.text(W_grid / 2, 4.0, title_text, ha='center', va='center', fontproperties=prop_title, weight='bold', fontsize=base_fs*1.5)
+    
+    if date_text:
+        ax.text(W_grid - 1.0, 6.5, date_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
+
+    y_curr = 8.0 
+    
+    # --- 绘制核心数据网格 ---
+    for r in range(grid_start_row if 'grid_start_row' in locals() else header_start_row, actual_max_row + 1):
+        if row_types[r] == 'skip': continue
+        
         x_curr = 0
         rh = row_heights[r]
         rtype = row_types[r]
@@ -401,69 +443,72 @@ def render_sheet_range_to_image_stream(ws, range_str):
             is_merged_top_left = True
             draw_w, draw_h = cw, rh
             
-            if (r, c) in merged_dict:
-                info = merged_dict[(r, c)]
-                if (r, c) != info['top_left']:
-                    is_merged_top_left = False 
-                else:
-                    draw_w = sum(col_widths.get(mc, 4.0) for mc in range(info['top_left'][1], info['bottom_right'][1] + 1) if mc in valid_cols)
-                    draw_h = sum(row_heights.get(mr, 2.4) for mr in range(info['top_left'][0], info['bottom_right'][0] + 1))
+            if ws.merged_cells:
+                for mr in ws.merged_cells.ranges:
+                    if mr.min_row <= r <= mr.max_row and mr.min_col <= c <= mr.max_col:
+                        if (r, c) != (mr.min_row, mr.min_col):
+                            is_merged_top_left = False
+                        else:
+                            draw_w = sum(col_widths.get(mc, 0) for mc in range(mr.min_col, mr.max_col + 1) if mc in valid_cols)
+                            draw_h = sum(row_heights.get(mr_i, 2.2) for mr_i in range(mr.min_row, mr.max_row + 1))
+                        break
 
             if is_merged_top_left:
                 cell = ws.cell(row=r, column=c)
                 
-                # --- A. 原生底色提取 (绝不越权染色) ---
                 bg_color = '#FFFFFF'
                 if rtype == 'grid':
                     if cell.fill and cell.fill.patternType == 'solid' and cell.fill.start_color.rgb:
                         rgb = str(cell.fill.start_color.rgb)
-                        if len(rgb) == 8 and rgb != '00000000':
+                        if len(rgb) == 8 and rgb != '00000000': 
                             bg_color = '#' + rgb[2:]
                         elif len(rgb) == 6:
                             bg_color = '#' + rgb
-                            
-                # 线宽：外围标题/时间/单位层不画线框
+                
+                is_header_row = (r <= header_end_row)
+                if c == valid_cols[0] and not is_header_row:
+                    bg_color = '#FFFFFF'
+
                 lw = 0.8 if rtype == 'grid' else 0.0
                 rect = patches.Rectangle((x_curr, y_curr), draw_w, draw_h, facecolor=bg_color, edgecolor='#000000', linewidth=lw)
                 ax.add_patch(rect)
                 
-                # --- B. 字体属性全息继承 ---
                 val = cell.value
                 fmt = cell.number_format or "General"
                 text = ""
                 
                 if val is not None and str(val).strip() != "":
-                    if isinstance(val, (int, float)):
-                        if '%' in fmt or col_is_percent[c]:
+                    # 【优化项 1 强力锁】只有在字典中被登记的列，才有资格展示百分号
+                    if col_is_percent.get(c, False):
+                        if isinstance(val, (int, float)):
                             if '.00' in fmt: text = f"{val:.2%}"
                             elif '.0' in fmt: text = f"{val:.1%}"
                             else: text = f"{val:.0%}"
-                        elif ',' in fmt or (isinstance(val, (int, float)) and (val >= 1000 or val <= -1000)):
-                            if isinstance(val, float) and not val.is_integer():
-                                text = f"{val:,.2f}".rstrip('0').rstrip('.')
-                            else:
-                                text = f"{val:,.0f}"
-                        else:
-                            if isinstance(val, float):
-                                text = f"{val:.2f}".rstrip('0').rstrip('.')
-                            else:
-                                text = str(val)
-                    elif isinstance(val, datetime.datetime):
-                        if "年" in fmt: text = val.strftime('%Y年%m月%d日')
-                        else: text = val.strftime('%Y-%m-%d')
                     else:
-                        text = str(val).strip()
+                        # 普通数字严禁带%，强制应用千分位
+                        if isinstance(val, (int, float)):
+                            if ',' in fmt or (isinstance(val, (int, float)) and (val >= 1000 or val <= -1000)):
+                                if isinstance(val, float) and not val.is_integer():
+                                    text = f"{val:,.2f}".rstrip('0').rstrip('.')
+                                else:
+                                    text = f"{val:,.0f}"
+                            else:
+                                if isinstance(val, float):
+                                    text = f"{val:.2f}".rstrip('0').rstrip('.')
+                                else:
+                                    text = str(val)
+                        elif isinstance(val, datetime.datetime):
+                            if "年" in fmt: text = val.strftime('%Y年%m月%d日')
+                            else: text = val.strftime('%Y-%m-%d')
+                        else:
+                            text = str(val).strip()
                 
-                # 🔥 字体加粗与颜色直接取自原生 Excel
                 is_bold = False
                 if cell.font and cell.font.bold:
                     is_bold = True
-                
-                # 预防性补丁：大标题无论如何必须加粗
                 if rtype == 'meta' and "表" in text:
                     is_bold = True
 
-                # 🔥 还原原表格的红色警示字
                 text_color = '#000000'
                 if cell.font and cell.font.color and hasattr(cell.font.color, 'rgb') and cell.font.color.rgb:
                     rgb_val = str(cell.font.color.rgb)
@@ -472,7 +517,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     elif len(rgb_val) == 6:
                         text_color = '#' + rgb_val
                 
-                # --- C. 对齐方式定位 ---
                 halign = 'center'
                 valign = 'center'
                 
@@ -481,12 +525,12 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     if excel_h in ['left', 'right', 'center']: 
                         halign = excel_h
                     else:
-                        # 靠左的制表单位，靠右的单位与时间兜底
                         if "表" in text: halign = 'center'
-                        elif "单位:万" in text or "单位：万" in text: halign = 'right'
+                        elif "单位" in text: halign = 'right'
                         else: halign = 'left' 
                 else:
-                    halign = 'center' # 强力锁死：表格主体内细节必须全部居中对齐
+                    # 表格明细全面强制居中
+                    halign = 'center'
                     
                 pad_x = 1.0
                 if halign == 'left': text_x = x_curr + pad_x
@@ -500,7 +544,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     valign = 'center'
                     text_y = y_curr + draw_h / 2
                 
-                # 字号阶梯分配
                 fs = base_fs
                 if rtype == 'meta':
                     if "表" in text: fs = base_fs * 1.5
@@ -510,7 +553,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     wrap_w = max(1, int(draw_w / 1.1))
                     text = '\n'.join(textwrap.wrap(text, width=wrap_w))
                     
-                # --- D. 投射渲染 ---
                 if text:
                     kwargs = {
                         'ha': halign,
@@ -537,8 +579,15 @@ def render_sheet_range_to_image_stream(ws, range_str):
             x_curr += cw
         y_curr += rh
 
+    # 【优化项 3】将制表单位与万元，双双挪至表格最底部充当落款
+    if unit_text:
+        ax.text(W_grid - 1.0, y_curr + 1.5, unit_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
+    
+    if author_text:
+        ax.text(W_grid - 1.0, y_curr + 4.5, author_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
+
     img_stream = io.BytesIO()
-    fig.savefig(img_stream, format='png', dpi=500, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
+    fig.savefig(img_stream, format='png', dpi=800, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
     plt.close(fig)
     img_stream.seek(0)
     return img_stream
