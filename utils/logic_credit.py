@@ -411,4 +411,202 @@ def render_sheet_range_to_image_stream(ws, range_str):
                         # 【修复 1】双保险锁死：只有在指定列，且数值在合理范围内(<=10)，才赋予 %
                         if ('%' in fmt) or (col_is_percent.get(c, False) and abs(val) <= 10):
                             if '.00' in fmt: text = f"{val:.2%}"
-                            elif '.0' in fmt: text = f"{val:.1%
+                            elif '.0' in fmt: text = f"{val:.1%}"
+                            else: text = f"{val:.0%}"
+                        else:
+                            # 强制应用数字千分位
+                            if ',' in fmt or (isinstance(val, (int, float)) and (val >= 1000 or val <= -1000)):
+                                if isinstance(val, float) and not val.is_integer():
+                                    text = f"{val:,.2f}".rstrip('0').rstrip('.')
+                                else:
+                                    text = f"{val:,.0f}"
+                            else:
+                                if isinstance(val, float): text = f"{val:.2f}".rstrip('0').rstrip('.')
+                                else: text = str(val)
+                    elif isinstance(val, datetime.datetime):
+                        if "年" in fmt: text = val.strftime('%Y年%m月%d日')
+                        else: text = val.strftime('%Y-%m-%d')
+                    else:
+                        text = str(val).strip()
+                
+                # --- 字体加粗与颜色提取 ---
+                is_bold = False
+                if cell.font and cell.font.bold: is_bold = True
+                
+                # 兜底：标题和关键行必加粗
+                if is_title_meta and "表" in text: is_bold = True
+                if "小计" in text or "合计" in text or "总计" in text: is_bold = True
+                if r <= min_row + 3 and not is_title_meta: is_bold = True # 表头必加粗
+
+                # 【修复 3】原生还原红色字体！
+                text_color = '#000000'
+                if cell.font and cell.font.color and hasattr(cell.font.color, 'rgb') and cell.font.color.rgb:
+                    rgb_val = str(cell.font.color.rgb)
+                    if len(rgb_val) == 8 and rgb_val != '00000000': text_color = '#' + rgb_val[2:]
+                    elif len(rgb_val) == 6: text_color = '#' + rgb_val
+                
+                # --- 对齐方式定位 ---
+                halign = 'center'
+                valign = 'center'
+                
+                if is_title_meta:
+                    if "表" in text: halign = 'center'
+                    elif "单位" in text and "万" in text: halign = 'right'
+                    elif "时间" in text: halign = 'right'
+                    elif "制表" in text: halign = 'left'
+                else:
+                    excel_h = cell.alignment.horizontal if cell.alignment else None
+                    if excel_h in ['left', 'right', 'center']: halign = excel_h
+                    else: halign = 'center' # 【修复 4】表格明细强制居中
+                    
+                pad_x = 1.0
+                if halign == 'left': text_x = x_curr + pad_x
+                elif halign == 'right': text_x = x_curr + draw_w - pad_x
+                else: text_x = x_curr + draw_w / 2
+                
+                if is_title_meta and not "表" in text:
+                    valign = 'bottom'
+                    text_y = y_curr + draw_h - 0.2
+                else:
+                    valign = 'center'
+                    text_y = y_curr + draw_h / 2
+                
+                fs = base_fs
+                if is_title_meta:
+                    if "表" in text: fs = base_fs * 1.5
+                    else: fs = base_fs * 0.95
+
+                if isinstance(text, str) and len(text) > (draw_w / 1.1):
+                    wrap_w = max(1, int(draw_w / 1.1))
+                    text = '\n'.join(textwrap.wrap(text, width=wrap_w))
+                    
+                if text:
+                    kwargs = {
+                        'ha': halign,
+                        'va': valign,
+                        'color': text_color,
+                        'clip_on': True
+                    }
+                    
+                    if is_bold and custom_font_bold:
+                        prop = custom_font_bold.copy()
+                        prop.set_size(fs)
+                        kwargs['fontproperties'] = prop
+                    elif custom_font_regular:
+                        prop = custom_font_regular.copy()
+                        if is_bold: prop.set_weight('bold')
+                        prop.set_size(fs)
+                        kwargs['fontproperties'] = prop
+                    else:
+                        kwargs['weight'] = 'bold' if is_bold else 'normal'
+                        kwargs['fontsize'] = fs
+                        
+                    ax.text(text_x, text_y, text, **kwargs)
+
+            x_curr += cw
+        y_curr += rh
+
+    img_stream = io.BytesIO()
+    fig.savefig(img_stream, format='png', dpi=1000, facecolor=fig.get_facecolor(), edgecolor='none', bbox_inches='tight')
+    plt.close(fig)
+    img_stream.seek(0)
+    return img_stream
+
+# ==================== 导出文件生成逻辑 ====================
+
+def generate_export_files_in_memory(file_stream):
+    results = []
+    logs = []
+    today_mmdd = datetime.datetime.now().strftime('%m%d')
+    sys_name = platform.system()
+    
+    sheets_info = [
+        {"name": "每日-中粮贸易外部赊销限额使用监控表", "range": "$A$1:$G$30", "base_title": "中粮贸易外部赊销限额使用监控表"}
+    ]
+    
+    if True: 
+        sheets_info.append({"name": "每周-正大额度使用情况", "range": "$A$1:$L$34", "base_title": "正大额度使用情况"})
+        
+    if sys_name == 'Windows':
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_in:
+            file_stream.seek(0)
+            tmp_in.write(file_stream.read())
+            temp_excel_path = tmp_in.name
+            
+        try:
+            import win32com.client
+            try:
+                app = win32com.client.Dispatch("Excel.Application")
+            except:
+                app = win32com.client.Dispatch("Ket.Application") 
+                
+            app.Visible = False
+            app.DisplayAlerts = False
+            wb = app.Workbooks.Open(temp_excel_path, ReadOnly=True)
+            
+            for s_info in sheets_info:
+                try:
+                    ws = wb.Sheets(s_info['name'])
+                    ws.PageSetup.PrintArea = s_info['range']
+                    ws.PageSetup.Orientation = 1
+                    ws.PageSetup.PaperSize = 9
+                    ws.PageSetup.Zoom = False
+                    ws.PageSetup.FitToPagesWide = 1
+                    ws.PageSetup.FitToPagesTall = 1
+                    ws.PageSetup.CenterHorizontally = True
+                    
+                    out_name = f"{s_info['base_title']}{today_mmdd}.pdf"
+                    temp_pdf_path = os.path.join(tempfile.gettempdir(), out_name)
+                    
+                    ws.ExportAsFixedFormat(0, temp_pdf_path, IgnorePrintAreas=False)
+                    
+                    with open(temp_pdf_path, "rb") as f:
+                        results.append({"name": out_name, "data": f.read(), "type": "pdf"})
+                    os.remove(temp_pdf_path)
+                    logs.append(f"   ✅ 成功生成 PDF: {out_name}")
+                except Exception as e:
+                    logs.append(f"   ⚠️ 跳过 {s_info['name']}: {str(e)}")
+                    
+            wb.Close(SaveChanges=False)
+            app.Quit()
+        except Exception as e:
+            logs.append(f"❌ PDF 引擎调用失败: {str(e)}")
+        finally:
+            if os.path.exists(temp_excel_path):
+                os.remove(temp_excel_path)
+                
+    else:
+        file_stream.seek(0)
+        try:
+            wb = openpyxl.load_workbook(file_stream, data_only=True)
+            for s_info in sheets_info:
+                if s_info['name'] in wb.sheetnames:
+                    img_stream = render_sheet_range_to_image_stream(wb[s_info['name']], s_info['range'])
+                    if img_stream:
+                        out_name = f"{s_info['base_title']}{today_mmdd}.png"
+                        results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
+                        logs.append(f"   ✅ 成功生成像素级对齐图片: {out_name}")
+        except Exception as e:
+            logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
+            
+    return results, logs
+
+# ==================== 主控入口 ====================
+
+def process_credit_report(uploaded_file):
+    logs = []
+    sys_name = platform.system()
+    env_msg = f"当前环境: {sys_name} " + ("(原生支持 PDF 导出)" if sys_name == 'Windows' else "(云端环境，将生成高清预览图替代 PDF)")
+    
+    kill_excel_processes()
+    file_stream = io.BytesIO(uploaded_file.getvalue())
+    
+    word_bytes, word_text_dict, word_logs = generate_word_in_memory(file_stream)
+    logs.extend(word_logs)
+    
+    export_files, export_logs = generate_export_files_in_memory(file_stream)
+    logs.extend(export_logs)
+    
+    kill_excel_processes()
+    
+    return word_bytes, word_text_dict, export_files, logs, env_msg
