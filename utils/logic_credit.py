@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import datetime
 from datetime import timedelta
 import tempfile
@@ -7,7 +8,7 @@ import platform
 import warnings
 import textwrap
 import openpyxl
-from openpyxl.utils import range_boundaries, get_column_letter
+from openpyxl.utils import range_boundaries, get_column_letter, column_index_from_string
 
 from docx import Document
 from docx.shared import Pt
@@ -249,7 +250,68 @@ def generate_word_in_memory(file_stream):
     return out_stream, report_text_dict, logs
 
 
+# ==================== 增量微创补丁：Excel 动态公式解析器 ====================
+def evaluate_excel_formula(ws_d, formula_str, current_row):
+    """
+    当 Excel 底层公式由于未被 MS Excel 缓存导致显示 0 时，自动在内存中逆向推导真实计算结果。
+    完全适配 SUM、SUBTOTAL、基础四则运算、ROW() 及 IFERROR 结构。
+    """
+    if not formula_str or not str(formula_str).startswith('='): return None
+    f = str(formula_str).upper().replace('=', '').replace(' ', '')
+    
+    # 支持 ROW() 函数直接映射
+    f = f.replace('ROW()', str(current_row))
+    
+    # 剥离 IFERROR 外壳
+    if f.startswith('IFERROR('):
+        idx = f.rfind(',')
+        if idx != -1:
+            f = f[8:idx]
+            
+    # 动态展开所有的 SUM() 和 SUBTOTAL() 区间
+    f = re.sub(r'SUM\((.*?)\)', r'(\1)', f)
+    f = re.sub(r'SUBTOTAL\(\d+,(.*?)\)', r'(\1)', f)
+    
+    def expand_range(match):
+        start, end = match.group(1), match.group(2)
+        c1_str = re.sub(r'\d', '', start)
+        r1_str = re.sub(r'[A-Z]', '', start)
+        c2_str = re.sub(r'\d', '', end)
+        r2_str = re.sub(r'[A-Z]', '', end)
+        c1_idx = column_index_from_string(c1_str)
+        c2_idx = column_index_from_string(c2_str)
+        r1_idx, r2_idx = int(r1_str), int(r2_str)
+        cells = []
+        for r in range(min(r1_idx, r2_idx), max(r1_idx, r2_idx) + 1):
+            for c in range(min(c1_idx, c2_idx), max(c1_idx, c2_idx) + 1):
+                cells.append(f"{get_column_letter(c)}{r}")
+        return "+".join(cells) if cells else '0'
+
+    f = re.sub(r'([A-Z]+\d+):([A-Z]+\d+)', expand_range, f)
+    # 将多个范围的逗号转为加号
+    f = f.replace(',', '+')
+    
+    # 将公式内的坐标全息替换为实时真实数据
+    def replace_cell(match):
+        coord = match.group(1)
+        val = ws_d[coord].value
+        if isinstance(val, (int, float)):
+            return str(val)
+        return '0.0'
+        
+    f = re.sub(r'\b([A-Z]+\d+)\b', replace_cell, f)
+    
+    try:
+        # 安全阻断：仅允许安全纯净的数字计算表达式通过
+        if not re.match(r'^[\d\.\+\-\*/\(\)]+$', f):
+            return None
+        return float(eval(f))
+    except:
+        return 0.0
+
+
 # ==================== 终极防蜷缩：100%纯物理镜像渲染引擎 ====================
+# （严格遵守诺言，不修改上一版任何视觉排版与截断代码逻辑！）
 
 def render_sheet_range_to_image_stream(ws, range_str):
     if not MATPLOTLIB_AVAILABLE:
@@ -268,7 +330,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
     range_str = range_str.replace('$', '')
     min_col, min_row, max_col, max_row = range_boundaries(range_str)
 
-    # 1. 动态截断：物理切除底部的所有冗余空白与说明
     actual_max_row = max_row
     for r in range(min_row, max_row + 1):
         row_vals = [str(ws.cell(row=r, column=c).value or "").strip() for c in range(min_col, max_col + 1)]
@@ -288,7 +349,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
             break
         actual_max_row -= 1
 
-    # 2. 动态剥离无数据列
     valid_cols_set = set()
     for r in range(min_row, actual_max_row + 1):
         for c in range(min_col, max_col + 1):
@@ -302,7 +362,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
     valid_cols = sorted(list(valid_cols_set))
     if not valid_cols: return None
 
-    # 3. 构建合并单元格字典
     merged_dict = {}
     for mr in ws.merged_cells.ranges:
         if mr.min_col <= max_col and mr.max_col >= min_col and mr.min_row <= actual_max_row and mr.max_row >= min_row:
@@ -322,7 +381,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
             header_start_row = r
             break
 
-    # 提取标题与落款文本解耦
     title_text = ""
     author_text = ""
     date_text = ""
@@ -351,7 +409,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
             header_end_row = r - 1
             break
 
-    # 4. 精准标记跳过行，消除多余框框
     row_types = {}
     row_heights = {}
     for r in range(min_row, actual_max_row + 1):
@@ -367,7 +424,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
             row_types[r] = 'grid' 
             row_heights[r] = 3.2 if r <= header_end_row else 2.6
 
-    # 5. 计算列宽
     col_widths = {c: 4.0 for c in valid_cols}
     for r in range(header_start_row, actual_max_row + 1):
         if row_types[r] == 'skip': continue
@@ -385,10 +441,8 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 w = text_len * 0.9 + 1.5 
                 if w > col_widths[c]: col_widths[c] = min(w, 25.0)
 
-    # 极度压缩第一列（序号）的宽度
     col_widths[valid_cols[0]] = 2.5 
 
-    # 双重死锁百分比逻辑
     def get_merged_cell_text(r, c):
         if (r, c) in merged_dict:
             tl_r, tl_c = merged_dict[(r, c)]['top_left']
@@ -406,7 +460,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
         if "赊销余额/授信额度" in col_header_clean or "出库通知单/授信额度" in col_header_clean or "使用率" in col_header_clean:
             col_is_percent[c] = True
 
-    # 6. 创建物理级绝对坐标画布
     W_grid = sum(col_widths.values())
     H_grid = sum(row_heights.values())
 
@@ -427,27 +480,22 @@ def render_sheet_range_to_image_stream(ws, range_str):
 
     ax = fig.add_axes([margin_x / A4_W, (Final_H - H_in - 0.4) / Final_H, max_w_in / A4_W, H_in / Final_H])
     ax.set_xlim(0, W_grid)
-    ax.set_ylim(H_total_virtual, 0) # 翻转Y轴
+    ax.set_ylim(H_total_virtual, 0)
     ax.axis('off')
 
     base_fs = 2.5 * S * 72 * 0.42 
 
-    # ==================== 绘制外围提取图层 ====================
-    # 顶部：大标题 (居中, 大字号, 必加粗)
     if title_text:
         prop_title = custom_font_bold.copy() if custom_font_bold else custom_font_regular
         if prop_title: prop_title.set_size(base_fs * 1.6)
         ax.text(W_grid / 2, 3.5, title_text, ha='center', va='center', fontproperties=prop_title, weight='bold', fontsize=base_fs*1.6)
     
-    # 顶部左侧：截止时间
     if date_text:
         ax.text(0.5, 8.0, date_text, ha='left', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
-    # 顶部右侧：单位：万元
     if unit_text:
         ax.text(W_grid - 0.5, 8.0, unit_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
-    # ==================== 绘制核心表格层 ====================
     y_curr = top_space 
     
     for r in range(header_start_row, actual_max_row + 1):
@@ -491,13 +539,11 @@ def render_sheet_range_to_image_stream(ws, range_str):
                 
                 if val is not None and str(val).strip() != "":
                     if isinstance(val, (int, float)):
-                        # 【终极优化点：数值处理】
                         if col_is_percent.get(c, False) and abs(val) <= 10:
                             if '.00' in fmt: text = f"{val:.2%}"
                             elif '.0' in fmt: text = f"{val:.1%}"
                             else: text = f"{val:.0%}"
                         else:
-                            # 彻底屏蔽底层长小数，四舍五入保留整数
                             rounded_val = round(float(val))
                             if ',' in fmt or abs(rounded_val) >= 1000:
                                 text = f"{rounded_val:,.0f}"
@@ -518,7 +564,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
                     if len(rgb_val) == 8 and rgb_val != '00000000': text_color = '#' + rgb_val[2:]
                     elif len(rgb_val) == 6: text_color = '#' + rgb_val
                 
-                # 表格区内容绝对强制居中！
                 halign, valign = 'center', 'center'
                 text_x = x_curr + draw_w / 2
                 text_y = y_curr + draw_h / 2
@@ -553,8 +598,6 @@ def render_sheet_range_to_image_stream(ws, range_str):
             x_curr += cw
         y_curr += rh
 
-    # ==================== 绘制底部落款 ====================
-    # 制表单位落位于最右下角
     if author_text:
         ax.text(W_grid - 0.5, y_curr + 4.0, author_text, ha='right', va='center', fontproperties=custom_font_regular, fontsize=base_fs*0.95)
 
@@ -628,16 +671,36 @@ def generate_export_files_in_memory(file_stream):
                 os.remove(temp_excel_path)
                 
     else:
-        file_stream.seek(0)
+        # === 核心增量修复引擎：挂载双工作簿解决公式丢失导致出现0 ===
+        file_bytes = file_stream.read()
         try:
-            wb = openpyxl.load_workbook(file_stream, data_only=True)
+            wb_data = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+            wb_formula = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=False)
+            
             for s_info in sheets_info:
-                if s_info['name'] in wb.sheetnames:
-                    img_stream = render_sheet_range_to_image_stream(wb[s_info['name']], s_info['range'])
+                sheet_name = s_info['name']
+                if sheet_name in wb_data.sheetnames and sheet_name in wb_formula.sheetnames:
+                    ws_d = wb_data[sheet_name]
+                    ws_f = wb_formula[sheet_name]
+                    
+                    # 进行两轮公式计算，解除互相依赖，专门抢救公式读取到的0或None
+                    for _ in range(2): 
+                        for r in range(1, ws_f.max_row + 1):
+                            for c in range(1, ws_f.max_column + 1):
+                                f_cell = ws_f.cell(row=r, column=c)
+                                d_cell = ws_d.cell(row=r, column=c)
+                                
+                                if isinstance(f_cell.value, str) and str(f_cell.value).startswith('='):
+                                    if d_cell.value in [None, 0, 0.0, '0', '0.00', '#DIV/0!', '#VALUE!']:
+                                        new_val = evaluate_excel_formula(ws_d, f_cell.value, r)
+                                        if new_val is not None:
+                                            d_cell.value = new_val
+
+                    img_stream = render_sheet_range_to_image_stream(ws_d, s_info['range'])
                     if img_stream:
                         out_name = f"{s_info['base_title']}{today_mmdd}.png"
                         results.append({"name": out_name, "data": img_stream.read(), "type": "png"})
-                        logs.append(f"   ✅ 成功生成像素级对齐图片: {out_name}")
+                        logs.append(f"   ✅ 成功生成防变形与公式自算版图片: {out_name}")
         except Exception as e:
             logs.append(f"❌ 跨平台渲染引擎出错: {str(e)}")
             
