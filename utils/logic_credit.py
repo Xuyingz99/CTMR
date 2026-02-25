@@ -252,23 +252,16 @@ def generate_word_in_memory(file_stream):
 
 # ==================== 增量微创补丁：Excel 动态公式解析器 ====================
 def evaluate_excel_formula(ws_d, formula_str, current_row):
-    """
-    当 Excel 底层公式由于未被 MS Excel 缓存导致显示 0 时，自动在内存中逆向推导真实计算结果。
-    完全适配 SUM、SUBTOTAL、基础四则运算、ROW() 及 IFERROR 结构。
-    """
     if not formula_str or not str(formula_str).startswith('='): return None
     f = str(formula_str).upper().replace('=', '').replace(' ', '')
     
-    # 支持 ROW() 函数直接映射
     f = f.replace('ROW()', str(current_row))
     
-    # 剥离 IFERROR 外壳
     if f.startswith('IFERROR('):
         idx = f.rfind(',')
         if idx != -1:
             f = f[8:idx]
             
-    # 动态展开所有的 SUM() 和 SUBTOTAL() 区间
     f = re.sub(r'SUM\((.*?)\)', r'(\1)', f)
     f = re.sub(r'SUBTOTAL\(\d+,(.*?)\)', r'(\1)', f)
     
@@ -278,31 +271,34 @@ def evaluate_excel_formula(ws_d, formula_str, current_row):
         r1_str = re.sub(r'[A-Z]', '', start)
         c2_str = re.sub(r'\d', '', end)
         r2_str = re.sub(r'[A-Z]', '', end)
-        c1_idx = column_index_from_string(c1_str)
-        c2_idx = column_index_from_string(c2_str)
-        r1_idx, r2_idx = int(r1_str), int(r2_str)
-        cells = []
-        for r in range(min(r1_idx, r2_idx), max(r1_idx, r2_idx) + 1):
-            for c in range(min(c1_idx, c2_idx), max(c1_idx, c2_idx) + 1):
-                cells.append(f"{get_column_letter(c)}{r}")
-        return "+".join(cells) if cells else '0'
+        try:
+            c1_idx = column_index_from_string(c1_str)
+            c2_idx = column_index_from_string(c2_str)
+            r1_idx, r2_idx = int(r1_str), int(r2_str)
+            cells = []
+            for r in range(min(r1_idx, r2_idx), max(r1_idx, r2_idx) + 1):
+                for c in range(min(c1_idx, c2_idx), max(c1_idx, c2_idx) + 1):
+                    cells.append(f"{get_column_letter(c)}{r}")
+            return "+".join(cells) if cells else '0'
+        except:
+            return '0'
 
     f = re.sub(r'([A-Z]+\d+):([A-Z]+\d+)', expand_range, f)
-    # 将多个范围的逗号转为加号
     f = f.replace(',', '+')
     
-    # 将公式内的坐标全息替换为实时真实数据
     def replace_cell(match):
         coord = match.group(1)
-        val = ws_d[coord].value
-        if isinstance(val, (int, float)):
-            return str(val)
+        try:
+            val = ws_d[coord].value
+            if isinstance(val, (int, float)):
+                return str(val)
+        except:
+            pass
         return '0.0'
         
     f = re.sub(r'\b([A-Z]+\d+)\b', replace_cell, f)
     
     try:
-        # 安全阻断：仅允许安全纯净的数字计算表达式通过
         if not re.match(r'^[\d\.\+\-\*/\(\)]+$', f):
             return None
         return float(eval(f))
@@ -311,7 +307,6 @@ def evaluate_excel_formula(ws_d, formula_str, current_row):
 
 
 # ==================== 终极防蜷缩：100%纯物理镜像渲染引擎 ====================
-# （严格遵守诺言，不修改上一版任何视觉排版与截断代码逻辑！）
 
 def render_sheet_range_to_image_stream(ws, range_str):
     if not MATPLOTLIB_AVAILABLE:
@@ -671,7 +666,9 @@ def generate_export_files_in_memory(file_stream):
                 os.remove(temp_excel_path)
                 
     else:
-        # === 核心增量修复引擎：挂载双工作簿解决公式丢失导致出现0 ===
+        # === 核心增量修复引擎：挂载双工作簿解决公式丢失 ===
+        # 【关键修复】确保游标在开头
+        file_stream.seek(0) 
         file_bytes = file_stream.read()
         try:
             wb_data = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
@@ -683,7 +680,6 @@ def generate_export_files_in_memory(file_stream):
                     ws_d = wb_data[sheet_name]
                     ws_f = wb_formula[sheet_name]
                     
-                    # 进行两轮公式计算，解除互相依赖，专门抢救公式读取到的0或None
                     for _ in range(2): 
                         for r in range(1, ws_f.max_row + 1):
                             for c in range(1, ws_f.max_column + 1):
