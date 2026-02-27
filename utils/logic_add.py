@@ -245,9 +245,7 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-            
-        # 增量优化：添加 \n\n 以优化报告段落显示间距
-        return report_base + f"。\n\n分大区情况如下：\n{region_summary_str}"
+        return report_base + f"。分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
 def generate_customer_analysis_report_zj(df_processed, today_display):
@@ -380,9 +378,7 @@ def generate_region_department_report_zj(df_region, today_display, region_name):
         if trigger_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_str}"
-            
-        # 增量优化：添加 \n\n 以优化报告段落显示间距
-        return report_base + f"。\n\n分经营部情况如下：\n{dept_str}"
+        return report_base + f"。分经营部情况如下：\n{dept_str}"
     except: return f"{region_name}大区报告生成失败。"
 
 def generate_region_customer_report_zj(df_region, today_display, region_name):
