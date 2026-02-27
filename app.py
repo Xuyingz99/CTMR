@@ -421,12 +421,12 @@ def clean_and_organize_A_sheet(ws_A):
         pct_col = get_column_by_name(ws_A, "应收保证金比例")
         if pct_col:
             for r in range(2, ws_A.max_row + 1):
-                cell = ws_A.cell(row=r, column=pct_col)
-                try:
+                 cell = ws_A.cell(row=r, column=pct_col)
+                 try:
                     if cell.value:
                         cell.value = float(cell.value)
                         cell.number_format = '0%'
-                except: pass
+                 except: pass
         return True
     except: return False
 
@@ -445,8 +445,8 @@ def optimize_A_sheet_formatting(ws_A):
                         cell_date = None
                         for fmt in ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d"]:
                             try:
-                                cell_date = datetime.strptime(cell_date_str, fmt).date()
-                                break
+                                 cell_date = datetime.strptime(cell_date_str, fmt).date()
+                                 break
                             except: continue
                         if cell_date and cell_date <= today:
                             for col in range(1, ws_A.max_column + 1): ws_A.cell(row=row, column=col).font = dark_red_font
@@ -490,7 +490,7 @@ def create_A_summary_sheet(workbook, ws_A, today_date_str):
             if stats['yellow_cells'] > 0:
                 reminder_text = f"【逾期初始保证金】各位领导同事，截至{yesterday_str}，{dept_name}经营部初始保证金{stats['yellow_cells']}笔逾期，{stats['non_yellow_cells']}笔即将到期，请核对并及时催收，谢谢！ @所有人"
             else:
-                reminder_text = f"【逾期初始保证金】各位领导同事，截至{yesterday_str}，{dept_name}经营部初始保证金{stats['non_yellow_cells']}笔即将到期，请核对并及时催收，谢谢！ @所有人"
+                reminder_text = f"【逾期初始保证金】各位领导同事，截至{yesterday_str}，{dept_name}经营部初始保证金{stats['non_yellow_cells']}笔即将到期，请核解并及时催收，谢谢！ @所有人"
             ws_summary.cell(row=row_idx, column=1, value=dept_name)
             ws_summary.cell(row=row_idx, column=2, value=reminder_text)
             clean_log = reminder_text.replace('\n', '').replace('\r', '')
@@ -801,7 +801,9 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-        return report_base + f"。分大区情况如下：\n{region_summary_str}"
+            
+        # 增量优化：在这里加入换行符 \n 配合全新的 HTML 渲染逻辑
+        return report_base + f"。\n分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
 def generate_customer_analysis_report_zj(df_processed, today_display):
@@ -934,7 +936,9 @@ def generate_region_department_report_zj(df_region, today_display, region_name):
         if trigger_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_str}"
-        return report_base + f"。分经营部情况如下：\n{dept_str}"
+            
+        # 增量优化：在这里加入换行符 \n 配合全新的 HTML 渲染逻辑
+        return report_base + f"。\n分经营部情况如下：\n{dept_str}"
     except: return f"{region_name}大区报告生成失败。"
 
 def generate_region_customer_report_zj(df_region, today_display, region_name):
@@ -1061,37 +1065,32 @@ def process_additional_margin_logic(uploaded_file, region_filter):
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
-    (此函数为前两个功能保留原有渲染格式)
+    前端渲染优化：统一在一个背景色块内展示，并智能识别每一行处理换行，解决胡子连辫子问题
     """
     if not report_text: return
     
-    parts = re.split(r'(分大区情况如下：|分经营部情况如下：)', report_text)
-    header_text = parts[0]
-    detail_text = ""
-    if len(parts) > 1:
-        detail_text = "".join(parts[1:])
+    # 按换行符拆分文本，过滤掉空行
+    lines = [line.strip() for line in report_text.split('\n') if line.strip()]
     
+    html_content = ""
+    for line in lines:
+        if "情况如下：" in line:
+            # 标题性质的行加粗并增加一点间距
+             html_content += f"<div style='font-weight: bold; margin-top: 12px; margin-bottom: 6px; color: #1f1f1f;'>{line}</div>"
+        elif re.match(r'^\d+、', line):
+            # 匹配 1、 2、 等分点明细，稍微增加缩进，确保换行
+             html_content += f"<div style='margin-left: 8px; margin-bottom: 6px;'>{line}</div>"
+        else:
+            # 普通正文
+             html_content += f"<div style='margin-bottom: 8px;'>{line}</div>"
+             
     st.markdown(f"""
-    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid #d1e3ff; margin-bottom: 10px;">
-        <h4 style="margin-top: 0; color: #1f1f1f;">{title}</h4>
-        <div style="font-size: 1rem; color: #333; margin-bottom: 10px; line-height: 1.6;">{header_text}</div>
+    <div style="background-color: {bg_color}; padding: 20px; border-radius: 8px; border: 1px solid #d1e3ff; margin-bottom: 15px; color: #333; font-size: 1rem; line-height: 1.6;">
+        <h4 style="margin-top: 0; margin-bottom: 12px; color: #1f1f1f;">{title}</h4>
+        {html_content}
     </div>
     """, unsafe_allow_html=True)
-    
-    if detail_text:
-        lines = [line.strip() for line in detail_text.split('\n') if line.strip()]
-        list_html = ""
-        for line in lines:
-            if "情况如下：" in line:
-                 list_html += f"<div style='font-weight: bold; margin-top: 8px; margin-bottom: 4px;'>{line}</div>"
-            else:
-                 list_html += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
-                 
-        st.markdown(f"""
-        <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
-            {list_html}
-        </div>
-        """, unsafe_allow_html=True)
+
 
 def format_html_content_for_credit(text):
     """(信用日报专用) 将纯文本按原有格式美化为 HTML 列表"""
@@ -1296,7 +1295,7 @@ def main():
                                         mime=mime,
                                         use_container_width=True
                                     )
-                                    
+                            
                             # 图片预览降级展示
                             png_files = [f for f in export_files if f["type"] == "png"]
                             if png_files:
