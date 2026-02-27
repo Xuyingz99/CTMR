@@ -140,7 +140,7 @@ def apply_custom_css():
 
         #MainMenu, header, footer { visibility: hidden; }
                 
-     /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
+        /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
         [data-testid="stPills"] {
             display: flex;
             gap: 12px; /* 按钮之间的间距 */
@@ -184,37 +184,28 @@ def apply_custom_css():
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
-    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，美观展示
+    前端渲染优化：统一在一个背景色块内展示，并智能识别每一行处理换行，解决胡子连辫子问题
     """
     if not report_text: return
     
-    # 尝试拆分
-    parts = re.split(r'(分大区情况如下：|分经营部情况如下：)', report_text)
+    # 按换行符拆分文本，过滤掉空行
+    lines = [line.strip() for line in report_text.split('\n') if line.strip()]
     
-    header_text = parts[0]
-    detail_text = ""
-    if len(parts) > 1:
-        detail_text = "".join(parts[1:]) 
-    
+    html_content = ""
+    for line in lines:
+        if "情况如下：" in line:
+            # 标题性质的行加粗并增加一点间距
+             html_content += f"<div style='font-weight: bold; margin-top: 12px; margin-bottom: 6px; color: #1f1f1f;'>{line}</div>"
+        elif re.match(r'^\d+、', line):
+            # 匹配 1、 2、 等分点明细，稍微增加缩进，确保换行
+             html_content += f"<div style='margin-left: 8px; margin-bottom: 6px;'>{line}</div>"
+        else:
+            # 普通正文
+             html_content += f"<div style='margin-bottom: 8px;'>{line}</div>"
+             
     st.markdown(f"""
-    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid #d1e3ff; margin-bottom: 10px;">
-        <h4 style="margin-top: 0; color: #1f1f1f;">{title}</h4>
-        <div style="font-size: 1rem; color: #333; margin-bottom: 10px; line-height: 1.6;">{header_text}</div>
+    <div style="background-color: {bg_color}; padding: 20px; border-radius: 8px; border: 1px solid #d1e3ff; margin-bottom: 15px; color: #333; font-size: 1rem; line-height: 1.6;">
+        <h4 style="margin-top: 0; margin-bottom: 12px; color: #1f1f1f;">{title}</h4>
+        {html_content}
     </div>
     """, unsafe_allow_html=True)
-    
-    if detail_text:
-        lines = [line.strip() for line in detail_text.split('\n') if line.strip()]
-        
-        list_html = ""
-        for line in lines:
-            if "情况如下：" in line:
-                 list_html += f"<div style='font-weight: bold; margin-top: 8px; margin-bottom: 4px;'>{line}</div>"
-            else:
-                 list_html += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
-                 
-        st.markdown(f"""
-        <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
-            {list_html}
-        </div>
-        """, unsafe_allow_html=True)
