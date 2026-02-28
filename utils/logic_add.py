@@ -294,7 +294,7 @@ def generate_customer_analysis_report_zj(df_processed, today_display):
             od_s = f"，最长逾期{info['max_od_str']}天" if info['max_overdue'] > 0 else ""
             line = f"{i}、{info['regions']}：{info['contracts']}笔，{info['customer']}，{info['d_types']}待执行数量{smart_format_volume_zj(info['exec_qty'])}，需追加保证金金额{info['am_fmt']}万元{od_s}。"
             c_summary.append(line)
-        return f"{report_header}\n\n{'\n'.join(c_summary)}"
+        return f"{report_header}\n\n分客户情况如下：\n{'\n'.join(c_summary)}"
     except: return "客户分析报告生成失败。"
 
 def generate_region_department_report_zj(df_region, today_display, region_name):
@@ -429,7 +429,7 @@ def generate_region_customer_report_zj(df_region, today_display, region_name):
             od_s = f"，最长逾期{info['max_od_str']}天" if info['max_overdue'] > 0 else ""
             prefix = f"{i}、{info['depts']}：" if info['depts'] else f"{i}、"
             lines.append(f"{prefix}{info['contracts']}笔，{info['customer']}，{info['d_types']}待执行数量{smart_format_volume_zj(info['exec_qty'])}，需追加保证金金额{info['am_fmt']}万元{od_s}。")
-        return f"{report_header}\n\n{'\n'.join(lines)}"
+        return f"{report_header}\n\n分客户情况如下：\n{'\n'.join(lines)}"
     except: return f"{region_name}大区客户分析报告生成失败。"
 
 def process_additional_margin_logic(uploaded_file, region_filter):
