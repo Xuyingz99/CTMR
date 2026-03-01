@@ -184,7 +184,7 @@ def apply_custom_css():
 
 def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
-    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，美观展示
+    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，合并在一个带背景色的色块中展示
     """
     if not report_text: return
     
@@ -196,25 +196,21 @@ def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     if len(parts) > 1:
         detail_text = "".join(parts[1:]) 
     
-    st.markdown(f"""
-    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid #d1e3ff; margin-bottom: 10px;">
-        <h4 style="margin-top: 0; color: #1f1f1f;">{title}</h4>
-        <div style="font-size: 1rem; color: #333; margin-bottom: 10px; line-height: 1.6;">{header_text}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    # 构建列表部分的 HTML
+    list_html = ""
     if detail_text:
         lines = [line.strip() for line in detail_text.split('\n') if line.strip()]
-        
-        list_html = ""
         for line in lines:
             if "情况如下：" in line:
-                 list_html += f"<div style='font-weight: bold; margin-top: 8px; margin-bottom: 4px;'>{line}</div>"
+                 list_html += f"<div style='font-weight: bold; margin-top: 12px; margin-bottom: 4px; color: #1f1f1f;'>{line}</div>"
             else:
                  list_html += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
                  
-        st.markdown(f"""
-        <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
-            {list_html}
-        </div>
-        """, unsafe_allow_html=True)
+    # 将头部和列表合并在同一个 div 中统一渲染
+    st.markdown(f"""
+    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+        <h4 style="margin-top: 0; color: #1f1f1f;">{title}</h4>
+        <div style="font-size: 1rem; color: #333; margin-bottom: 0px; line-height: 1.6;">{header_text}</div>
+        <div style="font-size: 1rem; color: #333; line-height: 1.6;">{list_html}</div>
+    </div>
+    """, unsafe_allow_html=True)
