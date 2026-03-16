@@ -3,6 +3,7 @@ import numpy as np
 import io
 import warnings
 import re
+import os
 import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -77,6 +78,13 @@ def format_qty(val):
         return f"{float(rounded)}".rstrip('0').rstrip('.')
     return f"{float(d_val)}"
 
+def map_reason1(x):
+    if pd.isna(x): return x
+    if "客户原因" in str(x): return "一、客户原因/客户原因为主"
+    if "我方原因" in str(x): return "二、我方原因/我方原因为主"
+    if "既非我方" in str(x) or "非对方" in str(x): return "三、既非我方原因也非对方原因"
+    return str(x)
+
 # ================= 数据清洗 =================
 def locate_header_and_read_stream(file_stream, key_columns):
     try:
@@ -126,7 +134,7 @@ def process_basic_columns(df, date_cols, float_cols, int_cols=None):
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
-# ================= Word 周报生成工具 (无缝还原) =================
+# ================= Word 周报排版模块 =================
 def set_font_mixed(run_or_style, size_pt, bold=False, east_asia='仿宋_GB2312', ascii_font='Times New Roman'):
     run_or_style.font.size = Pt(size_pt)
     run_or_style.font.name = ascii_font
@@ -140,6 +148,8 @@ def init_styles(doc):
     set_font_mixed(style_ch, 14.0, False, '黑体', 'Times New Roman')
     style_ch.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
     style_ch.paragraph_format.line_spacing = Pt(28)
+    style_ch.paragraph_format.space_before = Pt(0)
+    style_ch.paragraph_format.space_after = Pt(0)
     style_ch.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     style_ch.paragraph_format.first_line_indent = Pt(28)
 
@@ -147,67 +157,185 @@ def init_styles(doc):
     set_font_mixed(style_tb, 12.0, False, '微软雅黑', 'Times New Roman')
     style_tb.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
     style_tb.paragraph_format.line_spacing = Pt(22)
+    style_tb.paragraph_format.space_before = Pt(0)
+    style_tb.paragraph_format.space_after = Pt(0)
     style_tb.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    style_tb.paragraph_format.first_line_indent = Pt(0)
 
     style_nm = doc.styles.add_style('NormalContent', 1)
     set_font_mixed(style_nm, 14.0, False, '仿宋_GB2312', 'Times New Roman')
     style_nm.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
     style_nm.paragraph_format.line_spacing = Pt(22)
+    style_nm.paragraph_format.space_before = Pt(0)
+    style_nm.paragraph_format.space_after = Pt(0)
     style_nm.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    style_nm.paragraph_format.first_line_indent = Pt(28)
+    style_nm.paragraph_format.first_line_indent = Pt(28) 
+
+    style_app = doc.styles.add_style('AppendixTitle', 1)
+    set_font_mixed(style_app, 15.0, False, '黑体', 'Times New Roman')
+    style_app.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    style_app.paragraph_format.line_spacing = Pt(28)
+    style_app.paragraph_format.space_before = Pt(0)
+    style_app.paragraph_format.space_after = Pt(0)
+    style_app.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    style_app.paragraph_format.first_line_indent = Pt(0)
 
 def set_page_margins(doc):
     section = doc.sections[0]
     section.page_width = Cm(266710.5 / 12700.0)
     section.page_height = Cm(377194.0 / 12700.0)
-    section.left_margin, section.right_margin = Cm(3.0), Cm(3.0)
-    section.top_margin, section.bottom_margin = Cm(2.54), Cm(2.54)
+    section.left_margin = Cm(3.0)
+    section.right_margin = Cm(3.0)
+    section.top_margin = Cm(2.54)
+    section.bottom_margin = Cm(2.54)
+    section.header_distance = Cm(19063.55 / 12700.0)
+    section.footer_distance = Cm(22222.14 / 12700.0)
 
-def build_cell_text(cell, text, align='center', bold=False, is_max=False):
+def build_cell_text(cell, text, align='center', bold=False, is_max=False, is_appendix=False):
     cell.text = ""
     p = cell.paragraphs[0]
-    p.paragraph_format.space_before, p.paragraph_format.space_after = Pt(0), Pt(0)
-    p.paragraph_format.line_spacing_rule, p.paragraph_format.line_spacing = WD_LINE_SPACING.EXACTLY, Pt(10)
+    p.paragraph_format.space_before = Pt(0)
+    p.paragraph_format.space_after = Pt(0)
     
+    if is_appendix:
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        p.paragraph_format.line_spacing = Pt(12)
+        font_sz = 7.5
+        en_font_sz = 7.5
+    else:
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        p.paragraph_format.line_spacing = Pt(10)
+        font_sz = 9.0
+        en_font_sz = 10.0
+
     if align == 'center': p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     elif align == 'left': p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     elif align == 'right': p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
-    parts = re.split(r'([a-zA-Z0-9.,%+-]+)', str(text) if pd.notna(text) else "")
+    text_str = str(text) if not pd.isna(text) else ""
+    parts = re.split(r'([a-zA-Z0-9.,%+-]+)', text_str)
     for part in parts:
         if not part: continue
         run = p.add_run(part)
         if is_max: run.font.color.rgb = RGBColor(255, 0, 0)
-        set_font_mixed(run, 10.0 if re.match(r'^[a-zA-Z0-9.,%+-]+$', part) else 9.0, bold, '微软雅黑', 'Times New Roman')
+        
+        if re.match(r'^[a-zA-Z0-9.,%+-]+$', part):
+            set_font_mixed(run, en_font_sz, bold, '微软雅黑', 'Times New Roman')
+        else:
+            set_font_mixed(run, font_sz, bold, '微软雅黑', 'Times New Roman')
+            
     cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
 def set_cell_background(cell, fill_color):
-    tcPr = cell._tc.get_or_add_tcPr()
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
     shd = OxmlElement('w:shd')
     shd.set(qn('w:val'), 'clear')
     shd.set(qn('w:color'), 'auto')
     shd.set(qn('w:fill'), fill_color)
     tcPr.append(shd)
 
+def apply_table_borders(table):
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    tblLayout = OxmlElement('w:tblLayout')
+    tblLayout.set(qn('w:type'), 'fixed')
+    tblPr.append(tblLayout)
+    
+    tblBorders = OxmlElement('w:tblBorders')
+    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+        border = OxmlElement(f'w:{border_name}')
+        border.set(qn('w:val'), 'single')
+        border.set(qn('w:sz'), '4') 
+        border.set(qn('w:space'), '0')
+        border.set(qn('w:color'), '000000')
+        tblBorders.append(border)
+    tblPr.append(tblBorders)
+    
+    tblCellMar = OxmlElement('w:tblCellMar')
+    for m in [('top', '28'), ('bottom', '28'), ('left', '57'), ('right', '57')]:
+        node = OxmlElement(f'w:{m[0]}')
+        node.set(qn('w:w'), m[1])
+        node.set(qn('w:type'), 'dxa')
+        tblCellMar.append(node)
+    tblPr.append(tblCellMar)
+
+def set_fixed_col_widths(table, widths, is_cm=False):
+    table.autofit = False
+    table.allow_autofit = False
+    for i, w_val in enumerate(widths):
+        w = Cm(w_val) if is_cm else Cm(w_val / 12700.0)
+        table.columns[i].width = w
+        for cell in table.columns[i].cells: cell.width = w
+
+def set_table_row_height(row, height_pt):
+    row.height = Pt(height_pt)
+    row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+
+def set_repeat_table_header(row):
+    tr = row._tr
+    trPr = tr.get_or_add_trPr()
+    tblHeader = OxmlElement('w:tblHeader')
+    tblHeader.set(qn('w:val'), "true")
+    trPr.append(tblHeader)
+
+# ================= 完整 Word 生成 =================
 def generate_word_report(df, df_unique):
-    """将原本操作本地文件的生成逻辑，完美迁移为内存流处理"""
+    if '原因分类1' in df_unique.columns:
+        df_unique['标准原因分类1'] = df_unique['原因分类1'].apply(map_reason1)
+
+    total_amount = df_unique['逾期金额（万元）'].sum()
+    safe_total = total_amount if total_amount > 0 else 1e-9
+    total_amount_str = format_num(total_amount, 0, True)
+
     doc = Document()
     set_page_margins(doc)
     init_styles(doc)
 
-    total_amount = df_unique['逾期金额（万元）'].sum()
-    safe_total = total_amount if total_amount > 0 else 1e-9
-
+    # ----- (三) 逾期销售天数 -----
     doc.add_paragraph('（三）逾期销售天数', style='ChapterTitle')
-    time_stats = df_unique.groupby('逾期天数分类').agg({'逾期金额（万元）': 'sum', '合同编号': 'count', '逾期数量（万吨）': 'sum'}).reindex(TIME_ORDER).fillna(0)
-    max_qty_cat = time_stats['逾期数量（万吨）'].idxmax()
+
+    total_qty = df_unique['逾期数量（万吨）'].sum()
+    safe_total_qty = total_qty if total_qty > 0 else 1e-9
+    avg_days_val = (df_unique['逾期数量（万吨）'] * df_unique['逾期天数']).sum() / safe_total_qty if total_qty > 0 else 0
+    avg_days = int(Decimal(str(round(avg_days_val, 6))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
     
+    time_stats = df_unique.groupby('逾期天数分类').agg({'逾期金额（万元）': 'sum', '合同编号': 'count', '逾期数量（万吨）': 'sum'}).reindex(TIME_ORDER).fillna(0)
+    
+    p1 = doc.add_paragraph(style='NormalContent')
+    run_avg1 = p1.add_run(f"平均逾期{avg_days}天，")
+    set_font_mixed(run_avg1, 14.0, bold=True)
+    run_avg2 = p1.add_run("周环比无数据")
+    set_font_mixed(run_avg2, 14.0, bold=True)
+    run_avg2.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    run_avg3 = p1.add_run("。")
+    set_font_mixed(run_avg3, 14.0, bold=True)
+
+    max_qty_cat = time_stats['逾期数量（万吨）'].idxmax()
+    valid_times = [t for t in TIME_ORDER if time_stats.loc[t, '逾期金额（万元）'] > 0]
+    for i, t in enumerate(valid_times):
+        amt = time_stats.loc[t, '逾期金额（万元）']
+        ratio = amt / safe_total * 100
+        is_last = (i == len(valid_times) - 1)
+        punctuation = "。" if is_last else "；"
+        text_part = f"逾期天数在{t.replace('天', '')}天的，共涉及{format_num(amt, 0, True)}万元，占总逾期金额的{format_num(ratio, is_percent=True)}"
+        run_part = p1.add_run(text_part + punctuation)
+        is_max = (t == max_qty_cat)
+        set_font_mixed(run_part, 14.0, bold=is_max)
+        if is_max: run_part.font.color.rgb = RGBColor(255, 0, 0)
+    p1.paragraph_format.space_after = Pt(0)
+
+    doc.add_paragraph('逾期销售提货分时间情况表', style='TableTitle')
     table1 = doc.add_table(rows=1, cols=5)
-    table1.style = 'Table Grid'
+    table1.alignment = WD_TABLE_ALIGNMENT.CENTER
+    set_fixed_col_widths(table1, [2.72, 2.95, 2.95, 2.95, 2.95], is_cm=True)
+        
     headers1 = ['逾期时间', '逾期金额\n（万元）', '逾期金额\n占比', '合同个数\n（笔）', '逾期数量\n（万吨）']
     for i, h in enumerate(headers1):
         build_cell_text(table1.cell(0, i), h, bold=True)
         set_cell_background(table1.cell(0, i), 'D9D9D9')
+    set_table_row_height(table1.rows[0], Cm(0.62).pt)
+    set_repeat_table_header(table1.rows[0])
 
     for t in TIME_ORDER:
         amt = time_stats.loc[t, '逾期金额（万元）']
@@ -219,10 +347,335 @@ def generate_word_report(df, df_unique):
             build_cell_text(row_cells[2], format_num(amt / safe_total * 100, is_percent=True), bold=is_max, is_max=is_max)
             build_cell_text(row_cells[3], format_num(time_stats.loc[t, '合同编号'], 0, True), bold=is_max, is_max=is_max)
             build_cell_text(row_cells[4], format_qty(time_stats.loc[t, '逾期数量（万吨）']), bold=is_max, is_max=is_max)
+            set_table_row_height(table1.rows[-1], Cm(0.48).pt)
 
-    # (因全量Word写入代码非常庞大，此处精简了骨架，如果需要补全表二、表三，可遵循以上逻辑快速映射)
-    doc.add_paragraph('\n（四）逾期销售原因', style='ChapterTitle')
-    doc.add_paragraph('注：详情数据请参考下载的 Excel 监控表，或根据业务需求将 Python 线下脚本中其余表格按此范式追加写入。', style='NormalContent')
+    tot_cells1 = table1.add_row().cells
+    build_cell_text(tot_cells1[0], '总计', bold=True)
+    build_cell_text(tot_cells1[1], total_amount_str, bold=True)
+    build_cell_text(tot_cells1[2], '100%', bold=True)
+    build_cell_text(tot_cells1[3], format_num(time_stats['合同编号'].sum(), 0, True), bold=True)
+    build_cell_text(tot_cells1[4], format_qty(time_stats['逾期数量（万吨）'].sum()), bold=True)
+    set_cell_background(tot_cells1[0], 'D9E1F4')
+    for cell in tot_cells1[1:]: set_cell_background(cell, 'DEEBF6')
+    set_table_row_height(table1.rows[-1], Cm(0.48).pt)
+    apply_table_borders(table1)
+
+    # ----- (四) 逾期销售原因 -----
+    doc.add_paragraph('（四）逾期销售原因', style='ChapterTitle')
+    if '标准原因分类1' not in df_unique.columns: df_unique['标准原因分类1'] = ''
+    r1_stats = df_unique.groupby('标准原因分类1').agg({'逾期金额（万元）': 'sum'})
+    max_r1 = r1_stats['逾期金额（万元）'].idxmax() if not r1_stats.empty else None
+    
+    p2 = doc.add_paragraph(style='NormalContent')
+    r1_texts_count = sum(1 for r1 in REASON1_ORDER if r1 in r1_stats.index and r1_stats.loc[r1, '逾期金额（万元）'] > 0)
+    current_idx = 0
+    for r1 in REASON1_ORDER:
+        amt = r1_stats.loc[r1, '逾期金额（万元）'] if r1 in r1_stats.index else 0
+        if amt > 0:
+            current_idx += 1
+            prefix = "主要由客户原因造成的" if "客户原因" in r1 else ("主要由我方原因造成的" if "我方原因" in r1 else "既非我方原因也非对方原因造成的")
+            text_part = f"{prefix}逾期金额{format_num(amt, 0, True)}万元，占比{format_num(amt/safe_total*100, is_percent=True)}"
+            is_last = (current_idx == r1_texts_count)
+            punctuation = "；详情如下：" if is_last else "；"
+            run_part = p2.add_run(text_part + punctuation)
+            is_max = (r1 == max_r1)
+            set_font_mixed(run_part, 14.0, bold=is_max)
+            if is_max: run_part.font.color.rgb = RGBColor(255, 0, 0)
+    p2.paragraph_format.space_after = Pt(0)
+
+    doc.add_paragraph('逾期销售提货分原因情况表', style='TableTitle')
+    table2 = doc.add_table(rows=1, cols=5)
+    table2.alignment = WD_TABLE_ALIGNMENT.CENTER
+    set_fixed_col_widths(table2, [7.05, 1.99, 2.01, 1.76, 1.99], is_cm=True)
+    
+    headers2 = ['逾期原因分类', '逾期金额\n（万元）', '逾期金额\n占比', '合同笔数\n（笔）', '逾期数量\n（万吨）']
+    for i, h in enumerate(headers2):
+        build_cell_text(table2.cell(0, i), h, bold=True)
+        set_cell_background(table2.cell(0, i), 'D9D9D9')
+    set_table_row_height(table2.rows[0], Cm(0.3).pt)
+    set_repeat_table_header(table2.rows[0])
+
+    for r1 in REASON1_ORDER:
+        r1_df = df_unique[df_unique['标准原因分类1'] == r1]
+        r1_amt = r1_df['逾期金额（万元）'].sum()
+        row_cells = table2.add_row().cells
+        build_cell_text(row_cells[0], r1, align='left', bold=True)
+        build_cell_text(row_cells[1], format_num(r1_amt, 0, True) if r1_amt>0 else '', align='right', bold=True)
+        build_cell_text(row_cells[2], format_num(r1_amt/safe_total*100, is_percent=True) if r1_amt>0 else '', align='right', bold=True)
+        build_cell_text(row_cells[3], format_num(len(r1_df), 0, True) if r1_amt>0 else '', align='right', bold=True)
+        build_cell_text(row_cells[4], format_qty(r1_df['逾期数量（万吨）'].sum()) if r1_amt>0 else '', align='right', bold=True)
+        for cell in row_cells: set_cell_background(cell, 'D9E1F4')
+        set_table_row_height(table2.rows[-1], Cm(0.46).pt)
+
+        if '原因分类2' not in r1_df.columns: continue
+        r2_stats = r1_df.groupby('原因分类2')['逾期金额（万元）'].sum()
+        r2_list = REASON2_ORDER.get(r1, [])
+        r2_val_map = {r2: r2_stats.get(r2, 0) for r2 in r2_list}
+        sorted_r2 = sorted(r2_list, key=lambda x: r2_val_map[x], reverse=True)
+
+        for r2 in sorted_r2:
+            r2_df = r1_df[r1_df['原因分类2'] == r2]
+            r2_amt = r2_val_map[r2]
+            row_cells = table2.add_row().cells
+            build_cell_text(row_cells[0], r2, align='left')
+            if r2_amt > 0:
+                build_cell_text(row_cells[1], format_num(r2_amt, 0, True), align='right')
+                build_cell_text(row_cells[2], format_num(r2_amt/safe_total*100, is_percent=True), align='right')
+                build_cell_text(row_cells[3], format_num(len(r2_df), 0, True), align='right')
+                build_cell_text(row_cells[4], format_qty(r2_df['逾期数量（万吨）'].sum()), align='right')
+            else:
+                for idx in range(1, 5): build_cell_text(row_cells[idx], '', align='right')
+            set_table_row_height(table2.rows[-1], Cm(0.46).pt)
+
+    tot_cells2 = table2.add_row().cells
+    tot_cells2[0].merge(tot_cells2[0])
+    build_cell_text(tot_cells2[0], '总计', bold=True)
+    build_cell_text(tot_cells2[1], total_amount_str, bold=True)
+    build_cell_text(tot_cells2[2], '100%', bold=True)
+    build_cell_text(tot_cells2[3], format_num(len(df_unique), 0, True), bold=True)
+    build_cell_text(tot_cells2[4], format_qty(df_unique['逾期数量（万吨）'].sum()), bold=True)
+    for cell in tot_cells2: set_cell_background(cell, 'D9E1F4')
+    set_table_row_height(table2.rows[-1], Cm(0.46).pt)
+    apply_table_borders(table2)
+
+    # ----- (五) 逾期销售分品种 -----
+    doc.add_paragraph('（五）逾期销售分品种', style='ChapterTitle')
+    variety_stats = df_unique.groupby('品种').agg({'逾期金额（万元）': 'sum', '合同编号': 'count', '逾期数量（万吨）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
+    max_v = variety_stats['逾期金额（万元）'].idxmax() if not variety_stats.empty else None
+    
+    p3 = doc.add_paragraph(style='NormalContent')
+    v_count = len(variety_stats)
+    for i, v in enumerate(variety_stats.index):
+        v_amt = variety_stats.loc[v, '逾期金额（万元）']
+        text_part = f"{v}逾期金额为{format_num(v_amt, 0, True)}万元，占比{format_num(v_amt/safe_total*100, is_percent=True)}"
+        is_last = (i == v_count - 1)
+        punctuation = "。详情如下：" if is_last else "；"
+        run_part = p3.add_run(text_part + punctuation)
+        is_max = (v == max_v)
+        set_font_mixed(run_part, 14.0, bold=is_max)
+        if is_max: run_part.font.color.rgb = RGBColor(255, 0, 0)
+    p3.paragraph_format.space_after = Pt(0)
+
+    doc.add_paragraph('逾期销售提货分品种情况表', style='TableTitle')
+    table3 = doc.add_table(rows=1, cols=5)
+    table3.alignment = WD_TABLE_ALIGNMENT.CENTER
+    set_fixed_col_widths(table3, [2.72, 2.95, 2.95, 2.95, 2.95], is_cm=True)
+    
+    headers3 = ['品种', '合同笔数', '逾期数量\n（万吨）', '逾期金额\n（万元）', '逾期金额\n占比']
+    for i, h in enumerate(headers3):
+        build_cell_text(table3.cell(0, i), h, bold=True)
+        set_cell_background(table3.cell(0, i), 'D9D9D9')
+    set_table_row_height(table3.rows[0], Cm(0.62).pt)
+    set_repeat_table_header(table3.rows[0])
+
+    for v in variety_stats.index:
+        row_cells = table3.add_row().cells
+        v_amt = variety_stats.loc[v, '逾期金额（万元）']
+        is_max = (v == max_v)
+        build_cell_text(row_cells[0], v, bold=is_max, is_max=is_max)
+        build_cell_text(row_cells[1], format_num(variety_stats.loc[v, '合同编号'], 0, True), bold=is_max, is_max=is_max)
+        build_cell_text(row_cells[2], format_qty(variety_stats.loc[v, '逾期数量（万吨）']), bold=is_max, is_max=is_max)
+        build_cell_text(row_cells[3], format_num(v_amt, 0, True), bold=is_max, is_max=is_max)
+        build_cell_text(row_cells[4], format_num(v_amt/safe_total*100, is_percent=True), bold=is_max, is_max=is_max)
+        set_table_row_height(table3.rows[-1], Cm(0.48).pt)
+
+    tot_cells3 = table3.add_row().cells
+    tot_cells3[0].merge(tot_cells3[0])
+    build_cell_text(tot_cells3[0], '总计', bold=True)
+    build_cell_text(tot_cells3[1], format_num(len(df_unique), 0, True), bold=True)
+    build_cell_text(tot_cells3[2], format_qty(df_unique['逾期数量（万吨）'].sum()), bold=True)
+    build_cell_text(tot_cells3[3], total_amount_str, bold=True)
+    build_cell_text(tot_cells3[4], '100%', bold=True)
+    set_cell_background(tot_cells3[0], 'D9E1F4')
+    for cell in tot_cells3[1:]: set_cell_background(cell, 'DEEBF6')
+    set_table_row_height(table3.rows[-1], Cm(0.48).pt)
+    apply_table_borders(table3)
+
+    # ----- (六) 逾期销售分客户 -----
+    def get_cust_type(row):
+        grp = row.get('所属集团')
+        if pd.notna(grp) and str(grp).strip() != '' and '中粮集团' not in str(grp): return '战略大客户', grp
+        intr = row.get('集团内部客户')
+        if pd.notna(intr) and str(intr).strip() != '': return '集团内部客户', intr
+        return '中小客户', row.get('客户名称', '')
+        
+    df_unique['客户大类'], df_unique['展示客户名'] = zip(*df_unique.apply(get_cust_type, axis=1))
+    c_stats = df_unique.groupby('客户大类')['逾期数量（万吨）'].sum().fillna(0)
+    strat_total = c_stats.get('战略大客户', 0)
+    mid_total = c_stats.get('中小客户', 0)
+    int_total = c_stats.get('集团内部客户', 0)
+    strat_cnt = df_unique[df_unique['客户大类'] == '战略大客户']['展示客户名'].nunique()
+    mid_cnt = df_unique[df_unique['客户大类'] == '中小客户']['展示客户名'].nunique()
+    int_cnt = df_unique[df_unique['客户大类'] == '集团内部客户']['展示客户名'].nunique()
+    total_customers = strat_cnt + mid_cnt + int_cnt
+
+    doc.add_paragraph('（六）逾期销售分客户', style='ChapterTitle')
+    max_c_type = c_stats.idxmax() if not c_stats.empty else None
+    
+    p4 = doc.add_paragraph(style='NormalContent')
+    run_base1 = p4.add_run(f"逾期提货客户共{total_customers}家，")
+    set_font_mixed(run_base1, 14.0, bold=True)
+    run_base2 = p4.add_run("周环比无数据")
+    set_font_mixed(run_base2, 14.0, bold=True)
+    run_base2.font.highlight_color = WD_COLOR_INDEX.YELLOW
+    run_base3 = p4.add_run("。包括")
+    set_font_mixed(run_base3, 14.0, bold=True)
+    
+    c_parts = [
+        ('战略大客户', f"{strat_cnt}家战略大客户共逾期{format_num(strat_total, 2)}万吨", "，"),
+        ('中小客户', f"{mid_cnt}家中小客户共逾期{format_num(mid_total, 2)}万吨", "，"),
+        ('集团内部客户', f"{int_cnt}家集团内部客户共逾期{format_num(int_total, 2)}万吨", "。具体情况如下表：")
+    ]
+    for c_type, text_part, punct in c_parts:
+        run_part = p4.add_run(text_part + punct)
+        is_max = (c_type == max_c_type and c_stats.get(c_type, 0) > 0)
+        set_font_mixed(run_part, 14.0, bold=is_max)
+        if is_max: run_part.font.color.rgb = RGBColor(255, 0, 0)
+    p4.paragraph_format.space_after = Pt(0)
+
+    doc.add_paragraph('逾期销售提货分客户明细表', style='TableTitle')
+    p_unit = doc.add_paragraph()
+    p_unit.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_unit.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    p_unit.paragraph_format.line_spacing = Pt(12)
+    p_unit.paragraph_format.space_before = Pt(0)
+    p_unit.paragraph_format.space_after = Pt(0)
+    run_unit = p_unit.add_run('单位：万吨')
+    set_font_mixed(run_unit, 9.0, bold=False, east_asia='微软雅黑', ascii_font='Times New Roman')
+
+    table4 = doc.add_table(rows=1, cols=4)
+    table4.alignment = WD_TABLE_ALIGNMENT.CENTER
+    set_fixed_col_widths(table4, [1.6, 8.2, 2.8, 2.5], is_cm=True)
+    
+    headers4 = ['序号', '客户名称/所属集团', '品种', '逾期数量']
+    for i, h in enumerate(headers4):
+        build_cell_text(table4.cell(0, i), h, bold=True)
+        set_cell_background(table4.cell(0, i), 'D9D9D9')
+    set_table_row_height(table4.rows[0], Cm(0.73).pt)
+    set_repeat_table_header(table4.rows[0])
+
+    def add_cust_rows(c_type, subtotal_name, start_idx):
+        sub_df = df_unique[df_unique['客户大类'] == c_type]
+        if sub_df.empty: return start_idx
+        agg_df = sub_df.groupby('展示客户名').agg({'逾期数量（万吨）': 'sum', '品种': lambda x: '、'.join(x.dropna().astype(str).unique())}).sort_values(by='逾期数量（万吨）', ascending=False).reset_index()
+        for _, row in agg_df.iterrows():
+            cells = table4.add_row().cells
+            build_cell_text(cells[0], start_idx)
+            build_cell_text(cells[1], row['展示客户名'])
+            build_cell_text(cells[2], row.get('品种', ''))
+            build_cell_text(cells[3], format_qty(row['逾期数量（万吨）']))
+            set_table_row_height(table4.rows[-1], Cm(0.44).pt)
+            start_idx += 1
+        sub_cells = table4.add_row().cells
+        sub_cells[0].merge(sub_cells[2])
+        build_cell_text(sub_cells[0], subtotal_name, bold=True)
+        build_cell_text(sub_cells[3], format_qty(agg_df['逾期数量（万吨）'].sum()), bold=True)
+        for c in [sub_cells[0], sub_cells[3]]: set_cell_background(c, 'D9D9D9')
+        set_table_row_height(table4.rows[-1], Cm(0.44).pt)
+        return start_idx
+
+    idx = 1
+    idx = add_cust_rows('战略大客户', '战略客户小计', idx)
+    idx = add_cust_rows('中小客户', '中小客户小计', idx)
+    idx = add_cust_rows('集团内部客户', '集团内部客户小计', idx)
+
+    tot_cells4 = table4.add_row().cells
+    tot_cells4[0].merge(tot_cells4[2])
+    build_cell_text(tot_cells4[0], '汇总', bold=True)
+    build_cell_text(tot_cells4[3], format_qty(df_unique['逾期数量（万吨）'].sum()), bold=True)
+    for c in [tot_cells4[0], tot_cells4[3]]: set_cell_background(c, 'DEEBF6')
+    set_table_row_height(table4.rows[-1], Cm(0.44).pt)
+    apply_table_borders(table4)
+
+    # ----- 附表 -----
+    new_section = doc.add_section(WD_SECTION.NEW_PAGE)
+    new_section.orientation = WD_ORIENT.LANDSCAPE
+    new_section.page_width = Cm(377194.0 / 12700.0)
+    new_section.page_height = Cm(266710.5 / 12700.0)
+    new_section.left_margin = Cm(40322.44 / 12700.0)
+    new_section.right_margin = Cm(40322.44 / 12700.0)
+    new_section.top_margin = Cm(32257.95 / 12700.0)
+    new_section.bottom_margin = Cm(32257.95 / 12700.0)
+    new_section.header_distance = Cm(19063.55 / 12700.0)
+    new_section.footer_distance = Cm(22222.14 / 12700.0)
+
+    def create_appendix(title, df_subset, table_idx):
+        doc.add_paragraph(title, style='AppendixTitle')
+        p_app_unit = doc.add_paragraph()
+        p_app_unit.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p_app_unit.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        p_app_unit.paragraph_format.line_spacing = Pt(28)
+        p_app_unit.paragraph_format.space_before = Pt(0)
+        p_app_unit.paragraph_format.space_after = Pt(0)
+        run_app_unit = p_app_unit.add_run('单位：万吨、元/吨、万元')
+        set_font_mixed(run_app_unit, 14.0, bold=False, east_asia='仿宋_GB2312', ascii_font='Times New Roman')
+
+        table = doc.add_table(rows=1, cols=15)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        
+        if table_idx == 5: widths_app = [9386.17, 15792.96, 25313.53, 22154.94, 12656.77, 15792.96, 12656.77, 12656.77, 18055.49, 18077.89, 117674.32, 39224.77, 12656.77, 13194.4, 14157.66]
+        elif table_idx == 6: widths_app = [9430.97, 15860.16, 25403.14, 19959.61, 12544.76, 16128.98, 13127.19, 12253.54, 17921.08, 17921.08, 118771.98, 38104.7, 12701.57, 12947.98, 12947.98]
+        else: widths_app = [11021.47, 16128.98, 24775.9, 20430.04, 11962.32, 15815.36, 13440.81, 11962.32, 18212.3, 18212.3, 111021.11, 45385.14, 13127.19, 12253.54, 14516.08]
+        set_fixed_col_widths(table, widths_app)
+
+        headers = ['序号', '经营部', '客户名称', '交货结束日期', '合同\n数量', '合同\n单价', '逾期\n天数', '逾期数量', '原因\n分类1', '原因\n分类2', '具体逾期原因', '解决方案及解决时间', '责任人', '上级领导', '是否为赊销合同']
+        for i, h in enumerate(headers):
+            cell = table.cell(0, i)
+            build_cell_text(cell, h, bold=True, is_appendix=True)
+            set_cell_background(cell, 'D9D9D9')
+        set_table_row_height(table.rows[0], Cm(0.9).pt)
+        set_repeat_table_header(table.rows[0])
+
+        if not df_subset.empty:
+            df_subset = df_subset.sort_values(by='逾期天数', ascending=False).reset_index(drop=True)
+            leader_map = {'珠三角': '黄旭东', '福建': '肖灿', '广西': '丁峰', '海南': '宋永伍', '粤西': '张文韬'}
+            for i, row in df_subset.iterrows():
+                cells = table.add_row().cells
+                dept_val = str(row.get('经营部', '')) if pd.notna(row.get('经营部')) else ""
+                dept_clean = dept_val.replace('经营部', '')
+                leader_val = leader_map.get(dept_clean, str(row.get('上级领导', '')) if pd.notna(row.get('上级领导')) else "")
+                
+                reason_detail = str(row.get('具体逾期原因', ''))
+                match = re.search(r'(?:业务|责任|负责|联系)(?:人|人员|员)?(?:[:：，,])?([\u4e00-\u9fa5]{2,3})(?:[\d\s,。、，.!?！？]|$)', reason_detail)
+                person_val = match.group(1) if match else ''
+
+                build_cell_text(cells[0], i+1, is_appendix=True)
+                build_cell_text(cells[1], dept_clean, align='center', is_appendix=True)
+                build_cell_text(cells[2], row.get('客户名称', ''), align='center', is_appendix=True)
+                dt = row.get('交货结束日期', '')
+                build_cell_text(cells[3], str(dt)[:10] if pd.notna(dt) else "", is_appendix=True)
+                build_cell_text(cells[4], format_num(row.get('合同数量(万吨)', ''), 2), is_appendix=True)
+                build_cell_text(cells[5], format_num(row.get('合同单价', ''), 0, True), is_appendix=True)
+                build_cell_text(cells[6], format_num(row.get('逾期天数', ''), 0, True), is_appendix=True)
+                build_cell_text(cells[7], format_qty(row.get('逾期数量（万吨）', '')), is_appendix=True)
+                build_cell_text(cells[8], row.get('原因分类1', ''), align='left', is_appendix=True)
+                build_cell_text(cells[9], row.get('原因分类2', ''), align='left', is_appendix=True)
+                build_cell_text(cells[10], reason_detail, align='left', is_appendix=True)
+                sol = str(row.get('解决方案', '')) if pd.notna(row.get('解决方案')) else ""
+                sol_dt = str(row.get('预计完成日期', ''))[:10] if pd.notna(row.get('预计完成日期')) else ""
+                build_cell_text(cells[11], f"{sol}{sol_dt}", align='left', is_appendix=True)
+                build_cell_text(cells[12], person_val, is_appendix=True)
+                build_cell_text(cells[13], leader_val, is_appendix=True)
+                
+                credit_val = "是" if pd.notna(row.get('销售类型')) and str(row.get('销售类型')).strip() == '赊销' else ""
+                build_cell_text(cells[14], credit_val, is_appendix=True)
+                set_table_row_height(table.rows[-1], Cm(0.6).pt)
+        else:
+            empty_row = table.add_row().cells
+            for cell in empty_row: build_cell_text(cell, '', is_appendix=True)
+            set_table_row_height(table.rows[-1], Cm(0.6).pt)
+        apply_table_borders(table)
+
+    df_app1 = df[df['逾期天数'] >= 50]
+    create_appendix('附表1：逾期60天以上的销售合同情况', df_app1, 5)
+    
+    if '是否重点关注' in df.columns: df_app2 = df[df['是否重点关注'].astype(str).str.contains('重点关注', na=False)]
+    else: df_app2 = pd.DataFrame()
+    create_appendix('附表2：其他需要重点关注的销售合同情况（尤其是有潜在风险的）', df_app2, 6)
+    
+    if '是否严重逾期' in df.columns: df_app3 = df[df['是否严重逾期'].astype(str).str.contains('严重逾期', na=False)]
+    else: df_app3 = pd.DataFrame()
+    create_appendix('附表3：严重逾期销售合同情况', df_app3, 7)
 
     word_io = io.BytesIO()
     doc.save(word_io)
@@ -379,7 +832,7 @@ def beautify_excel_io(df_output):
     return final_output
 
 # ================= 主控制逻辑 =================
-def process_overdue_data(batch_files, once_files, mapping_file=None, generate_word=False):
+def process_overdue_data(batch_files, once_files, mapping_file_path=None, generate_word=False):
     logs = []
     
     header_keywords = ["大区", "经营部", "合同编号", "客户名称"]
@@ -442,20 +895,21 @@ def process_overdue_data(batch_files, once_files, mapping_file=None, generate_wo
     else:
         df_final = df_merged.copy()
 
-    # --- 3. 计算与映射 ---
+    # --- 3. 计算与映射 (改为读取本地文件) ---
     group_map, internal_map = {}, {}
-    if mapping_file:
+    if mapping_file_path and os.path.exists(mapping_file_path):
         try:
-            mapping_file.seek(0)
-            df_total = pd.read_excel(mapping_file, sheet_name='总')
+            df_total = pd.read_excel(mapping_file_path, sheet_name='总')
             df_total.columns = df_total.columns.astype(str).str.strip().str.replace('\n', '')
             group_map = dict(zip(df_total['客户名称'], df_total['客户所属集团']))
-            mapping_file.seek(0)
-            df_internal = pd.read_excel(mapping_file, sheet_name='内部')
+            
+            df_internal = pd.read_excel(mapping_file_path, sheet_name='内部')
             df_internal.columns = df_internal.columns.astype(str).str.strip().str.replace('\n', '')
             internal_map = dict(zip(df_internal['客户名称'], df_internal['所属专业化公司']))
         except Exception as e:
-            logs.append(f"⚠️ 映射文件解析失败（已跳过映射）: {e}")
+            logs.append(f"⚠️ 本地映射文件解析失败（已跳过映射）: {e}")
+    else:
+        logs.append("⚠️ 未在同级目录下找到“客户关系清单.xlsx”，已跳过客户集团映射逻辑。")
 
     for col in ['调整后逾期销售金额', '合同单价', '合同金额', '交货结束日期', '交货开始日期', '合同数量']:
         if col not in df_final.columns:
@@ -529,10 +983,11 @@ def process_overdue_data(batch_files, once_files, mapping_file=None, generate_wo
     # --- 5. 提醒文本生成 ---
     reminders = generate_reminders(df_unique)
     
-    # --- 6. 生成 Word 报告 (如勾选) ---
+    # --- 6. 生成 Word 报告 (包含全部排版) ---
     word_io = None
     if generate_word:
-        word_io = generate_word_report(df_merged, df_unique)
+        # 使用格式化完毕的 df_final 供 Word 使用，保证字段和本地运行结果一致
+        word_io = generate_word_report(df_final, df_unique)
     
     logs.append("🎉 数据处理与计算完成！")
     return excel_io, word_io, reminders, logs
