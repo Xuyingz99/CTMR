@@ -12,8 +12,10 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-# === 导入新增的信用风险管理模块 ===
+# === 导入各个独立的业务模块与样式工具 ===
 from utils.logic_credit import process_credit_report
+from utils.style import apply_custom_css, display_pretty_report
+from utils.logic_overdue import process_overdue_data  # 新增的逾期处理逻辑
 
 # 忽略警告
 warnings.filterwarnings('ignore')
@@ -26,186 +28,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 注入设计师级 CSS (UI 优化版) ---
-st.markdown("""
-<style>
-    /* 1. 全局字体与配色 */
-    html { font-size: 18px !important; }
-
-    :root {
-        /* DeepSeek 风格蓝色渐变 */
-        --deepseek-blue: #4d6bfe;
-        --deepseek-dark: #2b4cff;
-        --btn-gradient: linear-gradient(90deg, #4d6bfe 0%, #2b4cff 100%);
-        --bg-color: #f8f9fa;
-        --text-main: #1f1f1f;
-        --text-sub: #5f6368;
-    }
-
-    .stApp { background-color: var(--bg-color); }
-
-    /* 2. 标题流光效果 */
-    .header-container {
-        text-align: center;
-        padding: 3rem 0 1rem 0;
-    }
-    .main-title {
-        font-size: 4.5rem !important;
-        font-weight: 800;
-        letter-spacing: -2px;
-        margin: 0;
-        background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
-        background-size: 200% auto;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: shine 5s linear infinite;
-    }
-    @keyframes shine { to { background-position: 200% center; } }
-    
-    .sub-title {
-        font-size: 1rem;
-        color: var(--text-sub);
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-top: 0.5rem;
-    }
-
-    /* 3. 问候语 */
-    .greeting-text {
-        font-size: 2rem;
-        font-weight: 300;
-        color: var(--text-main);
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-
-    /* 4. 功能选择器 */
-    div[role="radiogroup"] > label > div:first-child { display: none !important; }
-    div[role="radiogroup"] {
-        display: flex;
-        justify-content: center;
-        gap: 15px;
-        width: 100%;
-        margin-bottom: 25px;
-    }
-    div[role="radiogroup"] label {
-        background: white;
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        padding: 15px;
-        text-align: center;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        cursor: pointer;
-        flex: 1;
-        transition: all 0.3s;
-        min-height: 80px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        color: var(--text-sub);
-    }
-    div[role="radiogroup"] label[data-checked="true"] {
-        border: 2px solid transparent !important;
-        background: linear-gradient(white, white) padding-box, var(--btn-gradient) border-box !important;
-        color: var(--deepseek-blue) !important;
-        transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
-    }
-
-    /* 5. 说明框优化 (纯 HTML 左对齐) */
-    .info-box {
-        background: #ffffff;
-        border-left: 4px solid var(--deepseek-blue);
-        padding: 20px 25px;
-        border-radius: 0 8px 8px 0;
-        margin-bottom: 25px;
-        color: #4a4a4a;
-        font-size: 1rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-        text-align: left;
-        line-height: 1.8;
-    }
-    .info-title {
-        font-weight: 700;
-        color: #1f1f1f;
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    /* 6. 上传与按钮美化 */
-    [data-testid="stFileUploader"] section {
-        border-radius: 12px;
-        background-color: white;
-        border: 2px dashed #dbe0ea;
-        padding: 1.5rem;
-    }
-    [data-testid="stFileUploader"] section:hover { border-color: var(--deepseek-blue); }
-    
-    div.stButton > button {
-        width: 100%;
-        height: 60px;
-        border-radius: 12px;
-        font-size: 1.2rem;
-        font-weight: 600;
-        background: var(--btn-gradient);
-        color: white;
-        border: none;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(77, 107, 254, 0.3);
-    }
-    div.stButton > button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 8px 25px rgba(77, 107, 254, 0.4);
-        color: white;
-    }
-
-    #MainMenu, header, footer { visibility: hidden; }
-            
-    /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
-    [data-testid="stPills"] {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 15px;
-    }
-    
-    [data-testid="stPills"] button {
-        border-radius: 20px !important;
-        border: 1px solid #e0e0e0 !important;
-        background: white !important;
-        color: #5f6368 !important;
-        padding: 6px 20px !important;
-        font-size: 0.95rem !important;
-        transition: all 0.2s ease;
-        min-height: 40px !important;
-        height: auto !important;
-    }
-    
-    [data-testid="stPills"] button[aria-selected="true"] {
-        background: var(--btn-gradient) !important;
-        color: white !important;
-        border: none !important;
-        box-shadow: 0 4px 12px rgba(77, 107, 254, 0.3);
-        font-weight: 600 !important;
-    }
-    
-    [data-testid="stPills"] button:hover {
-        border-color: var(--deepseek-blue) !important;
-        color: var(--deepseek-blue) !important;
-        transform: translateY(-1px);
-    }
-    [data-testid="stPills"] button[aria-selected="true"]:hover {
-        color: white !important;
-        transform: translateY(-1px);
-    }           
-</style>
-""", unsafe_allow_html=True)
+# --- 注入设计师级 CSS ---
+apply_custom_css()
 
 # ============================================================================
-# PART 1: 初始保证金处理逻辑 (XSchushi.txt / app.py 原有逻辑)
+# PART 1: 初始保证金处理逻辑 (沿用原逻辑)
 # ============================================================================
 
 def read_excel_safe(file_stream):
@@ -564,7 +391,7 @@ def process_margin_deposit_logic(current_file, prev_file):
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()]
 
 # ============================================================================
-# PART 2: 追加保证金处理逻辑 (ZhuiJIA.py 集成版)
+# PART 2: 追加保证金处理逻辑 (沿用原逻辑)
 # ============================================================================
 
 def smart_format_money_zj(value):
@@ -1055,40 +882,9 @@ def process_additional_margin_logic(uploaded_file, region_filter):
         import traceback
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", ""
 
-# ==========================================
-# 网页美化渲染函数 (全局通用)
-# ==========================================
-
-def display_pretty_report(title, report_text, bg_color="#eef5ff"):
-    """
-    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，合并在一个带背景色的色块中展示
-    """
-    if not report_text: return
-    
-    parts = re.split(r'(分大区情况如下：|分经营部情况如下：|分客户情况如下：)', report_text)
-    header_text = parts[0]
-    detail_text = ""
-    if len(parts) > 1:
-        detail_text = "".join(parts[1:])
-    
-    # 构建列表部分的 HTML
-    list_html = ""
-    if detail_text:
-        lines = [line.strip() for line in detail_text.split('\n') if line.strip()]
-        for line in lines:
-            if "情况如下：" in line:
-                 list_html += f"<div style='font-weight: bold; margin-top: 12px; margin-bottom: 4px; color: #1f1f1f;'>{line}</div>"
-            else:
-                 list_html += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
-                 
-    # 将头部和列表合并在同一个 div 中统一渲染
-    st.markdown(f"""
-    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
-        <h4 style="margin-top: 0; color: #1f1f1f;">{title}</h4>
-        <div style="font-size: 1rem; color: #333; margin-bottom: 0px; line-height: 1.6;">{header_text}</div>
-        <div style="font-size: 1rem; color: #333; line-height: 1.6;">{list_html}</div>
-    </div>
-    """, unsafe_allow_html=True)
+# ============================================================================
+# 辅助渲染函数
+# ============================================================================
 
 def format_html_content_for_credit(text):
     """(信用日报专用) 将纯文本按原有格式美化为 HTML 列表"""
@@ -1101,9 +897,10 @@ def format_html_content_for_credit(text):
              list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #333; line-height: 1.6;'>• {line}</div>"
     return list_html
 
-# ==========================================
-# 主界面逻辑
-# ==========================================
+
+# ============================================================================
+# PART 3: 主界面路由与交互逻辑
+# ============================================================================
 
 def main():
     st.markdown("""
@@ -1122,7 +919,7 @@ def main():
             "📈 初始保证金处理": "init_margin",
             "📉 追加保证金处理": "add_margin",
             "📊 信用风险管理日报": "credit_report",
-            "📝 格式转换 (Demo)": "demo"
+            "⚠️ 逾期销售处理": "overdue_sales" 
         }
 
         mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
@@ -1150,13 +947,10 @@ def main():
                 if current_file and prev_file:
                     with st.spinner("🤖 正在进行数据比对与清洗，请稍候..."):
                         excel_data, report_logs = process_margin_deposit_logic(current_file, prev_file)
-                        
                         if excel_data:
                             st.success("✅ 处理完成！")
                             st.markdown("### 📢 生成的通报文案")
-                            for log in report_logs:
-                                st.info(log)
-                                
+                            for log in report_logs: st.info(log)
                             st.download_button(
                                 label=f"📥 下载处理后的报表 ({current_file.name})",
                                 data=excel_data,
@@ -1197,12 +991,9 @@ def main():
                         
                         if output_file:
                             st.success(f"✅ {selected_region}报告生成完成！")
-                            
                             c_a, c_b = st.columns(2)
-                            with c_a:
-                                display_pretty_report(f"业务单位报告 ({selected_region})", report_a, "#eef5ff")
-                            with c_b:
-                                display_pretty_report(f"分客户报告 ({selected_region})", report_b, "#fff8e6")
+                            with c_a: display_pretty_report(f"业务单位报告 ({selected_region})", report_a, "#eef5ff")
+                            with c_b: display_pretty_report(f"分客户报告 ({selected_region})", report_b, "#fff8e6")
                             
                             today_mmdd = datetime.now().strftime('%m%d')
                             file_prefix = "" if selected_region == "中粮贸易" else f"{selected_region}"
@@ -1220,7 +1011,7 @@ def main():
                 else:
                     st.warning("⚠️ 请先上传文件！")
 
-        # --- 模块 3: 信用风险管理日报 (新增) ---
+        # --- 模块 3: 信用风险管理日报 ---
         elif mode == "📊 信用风险管理日报":
             st.markdown("""
             <div class="info-box">
@@ -1238,30 +1029,21 @@ def main():
             if st.button("🚀 生成报告与导出文件 / Generate"):
                 if uploaded_file:
                     with st.spinner("🤖 正在解析 Excel 数据并渲染跨平台文件，请稍候..."):
-                        
                         word_bytes, word_text_dict, export_files, logs, env_msg = process_credit_report(uploaded_file)
-                        
                         st.info(f"💡 {env_msg}")
                         
                         if word_bytes or export_files:
                             st.success("✅ 任务处理完成！")
-                            
-                            # ---- [UI 优化] 分块着色渲染，复用 info-box 风格，去除了日志展开栏 ----
                             if word_text_dict:
                                 st.markdown("<h3 style='margin-top: 10px; margin-bottom: 20px; color: #1f1f1f;'>信用风险管理日报</h3>", unsafe_allow_html=True)
-                                
-                                # 中心对应的主题色映射
                                 center_themes = {
-                                    "玉米": {"bg": "#eef5ff", "bd": "#d1e3ff", "bar": "#4d6bfe"}, # 浅蓝
-                                    "粮谷": {"bg": "#ebf9f1", "bd": "#c3e8d1", "bar": "#28a745"}, # 浅绿
-                                    "大豆": {"bg": "#fff6e5", "bd": "#ffe2b3", "bar": "#fd7e14"}  # 浅橙
+                                    "玉米": {"bg": "#eef5ff", "bd": "#d1e3ff", "bar": "#4d6bfe"},
+                                    "粮谷": {"bg": "#ebf9f1", "bd": "#c3e8d1", "bar": "#28a745"},
+                                    "大豆": {"bg": "#fff6e5", "bd": "#ffe2b3", "bar": "#fd7e14"}
                                 }
-                                
                                 for center_name, content in word_text_dict.items():
                                     theme = center_themes.get(center_name, {"bg": "#fcf8f2", "bd": "#f0e6d2", "bar": "#6c757d"})
                                     html_content = format_html_content_for_credit(content)
-                                    
-                                    # 复用 info-box 左边框高亮和阴影逻辑
                                     st.markdown(f"""
                                     <div style="background-color: {theme['bg']}; padding: 20px 25px; border-radius: 0 8px 8px 0; border: 1px solid {theme['bd']}; border-left: 4px solid {theme['bar']}; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
                                         {html_content}
@@ -1270,7 +1052,6 @@ def main():
                             
                             st.markdown("### 📥 下载生成文件")
                             dl_cols = st.columns(1 + len(export_files))
-                            
                             with dl_cols[0]:
                                 if word_bytes:
                                     original_base = os.path.splitext(uploaded_file.name)[0]
@@ -1293,21 +1074,92 @@ def main():
                                         mime=mime,
                                         use_container_width=True
                                     )
-                                    
-                            # 图片预览降级展示
+                            
                             png_files = [f for f in export_files if f["type"] == "png"]
                             if png_files:
                                 st.markdown("#### 👁️ 图片预览")
                                 for p_f in png_files:
                                     st.image(p_f["data"], caption=p_f["name"], use_container_width=True)
+                        else: st.error("处理失败，未能提取到有效数据。")
+                else: st.warning("⚠️ 请先上传 Excel 文件！")
 
+        # --- 模块 4: 逾期销售处理 (新接入) ---
+        elif mode == "⚠️ 逾期销售处理":
+            st.markdown("""
+            <div class="info-box">
+                <div class="info-title">⚠️ 注意事项</div>
+                <div style="margin-left: 2px;">
+                    <div>支持上传分批及一次性逾期销售监控表进行合并清洗</div>
+                    <div style="margin-top: 4px;">系统将自动生成对应的逾期销售监控表及大区催收提醒内容</div>
+                    <div style="margin-top: 4px;">如有需要，可上传【客户关系清单】进行匹配，并勾选生成Word周报</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            need_weekly_report = st.checkbox("📄 需要同时生成逾期销售周报 (Word)")
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                batch_files = st.file_uploader("📂 1. 逾期销售监控表(分批)", type=['xlsx', 'csv'], accept_multiple_files=True)
+                if batch_files and len(batch_files) > 6: st.warning("⚠️ 最多上传 6 个分批文件，多余的可能被忽略。")
+            with c2:
+                once_files = st.file_uploader("📂 2. 逾期销售监控表(一次性)", type=['xlsx', 'csv'], accept_multiple_files=True)
+                if once_files and len(once_files) > 6: st.warning("⚠️ 最多上传 6 个一次性文件，多余的可能被忽略。")
+            with c3:
+                mapping_file = st.file_uploader("🔗 3. 客户关系清单 (选填)", type=['xlsx'])
+
+            if st.button("🚀 开始处理 / Analyze"):
+                if batch_files or once_files:
+                    with st.spinner("🤖 正在进行数据清洗、合并与智能分析..."):
+                        excel_io, word_io, reminders, logs = process_overdue_data(
+                            batch_files[:6] if batch_files else [], 
+                            once_files[:6] if once_files else [], 
+                            mapping_file, 
+                            generate_word=need_weekly_report
+                        )
+
+                        if excel_io:
+                            st.success("✅ 数据处理与分析成功！")
+                            
+                            # 渲染催收提醒文本
+                            if reminders:
+                                st.markdown("### 📢 逾期催收业务提醒")
+                                colors = ["#eef5ff", "#ebf9f1", "#fff6e5", "#f9ebf9", "#fff0f0"]
+                                col_idx = 0
+                                r_cols = st.columns(2) 
+                                for rem in reminders:
+                                    with r_cols[col_idx % 2]:
+                                        display_pretty_report(rem['title'], rem['content'], colors[col_idx % len(colors)])
+                                    col_idx += 1
+
+                            # 下载专区
+                            st.markdown("### 📥 下载生成文件")
+                            dl_cols = st.columns(2)
+                            
+                            today_str = datetime.now().strftime("%m%d")
+                            with dl_cols[0]:
+                                st.download_button(
+                                    label=f"📊 下载 逾期销售监控表{today_str}.xlsx",
+                                    data=excel_io,
+                                    file_name=f"逾期销售监控表{today_str}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True
+                                )
+                            
+                            if need_weekly_report and word_io:
+                                with dl_cols[1]:
+                                    st.download_button(
+                                        label=f"📄 下载 逾期销售周报.docx",
+                                        data=word_io,
+                                        file_name=f"逾期销售周报_{datetime.now().strftime('%Y%m%d')}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        use_container_width=True
+                                    )
                         else:
-                            st.error("处理失败，未能提取到有效数据。")
+                            st.error("处理失败，请查看日志")
+                            for log in logs: st.code(log)
                 else:
-                    st.warning("⚠️ 请先上传 Excel 文件！")
-                    
-        else:
-            st.info("此功能暂未开放，敬请期待...")
+                    st.warning("⚠️ 请至少上传一份逾期销售监控表数据（分批或一次性）！")
 
     st.markdown("<div style='text-align:center; color:#ccc; margin-top:50px;'>© 2026 TakeItEasy Tool</div>", unsafe_allow_html=True)
 
