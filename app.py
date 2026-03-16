@@ -15,7 +15,7 @@ from openpyxl.utils import get_column_letter
 # === 导入各个独立的业务模块与样式工具 ===
 from utils.logic_credit import process_credit_report
 from utils.style import apply_custom_css, display_pretty_report
-from utils.logic_overdue import process_overdue_data  # 新增的逾期处理逻辑
+from utils.logic_overdue import process_overdue_data  # 逾期处理逻辑
 
 # 忽略警告
 warnings.filterwarnings('ignore')
@@ -34,7 +34,6 @@ apply_custom_css()
 # ============================================================================
 # PART 1: 初始保证金处理逻辑 (沿用原逻辑)
 # ============================================================================
-
 def read_excel_safe(file_stream):
     try:
         file_stream.seek(0)
@@ -393,7 +392,6 @@ def process_margin_deposit_logic(current_file, prev_file):
 # ============================================================================
 # PART 2: 追加保证金处理逻辑 (沿用原逻辑)
 # ============================================================================
-
 def smart_format_money_zj(value):
     try:
         if pd.isna(value) or value is None: return "0"
@@ -1091,30 +1089,33 @@ def main():
                 <div style="margin-left: 2px;">
                     <div>支持上传分批及一次性逾期销售监控表进行合并清洗</div>
                     <div style="margin-top: 4px;">系统将自动生成对应的逾期销售监控表及大区催收提醒内容</div>
-                    <div style="margin-top: 4px;">如有需要，可上传【客户关系清单】进行匹配，并勾选生成Word周报</div>
+                    <div style="margin-top: 4px;">已配置自动读取本地【客户关系清单】，可勾选生成Word周报</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
             need_weekly_report = st.checkbox("📄 需要同时生成逾期销售周报 (Word)")
 
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
             with c1:
                 batch_files = st.file_uploader("📂 1. 逾期销售监控表(分批)", type=['xlsx', 'csv'], accept_multiple_files=True)
                 if batch_files and len(batch_files) > 6: st.warning("⚠️ 最多上传 6 个分批文件，多余的可能被忽略。")
             with c2:
                 once_files = st.file_uploader("📂 2. 逾期销售监控表(一次性)", type=['xlsx', 'csv'], accept_multiple_files=True)
                 if once_files and len(once_files) > 6: st.warning("⚠️ 最多上传 6 个一次性文件，多余的可能被忽略。")
-            with c3:
-                mapping_file = st.file_uploader("🔗 3. 客户关系清单 (选填)", type=['xlsx'])
 
             if st.button("🚀 开始处理 / Analyze"):
                 if batch_files or once_files:
                     with st.spinner("🤖 正在进行数据清洗、合并与智能分析..."):
+                        # =========================
+                        # 核心修改：读取本地清单文件
+                        # =========================
+                        mapping_path = "客户关系清单.xlsx"
+                        
                         excel_io, word_io, reminders, logs = process_overdue_data(
                             batch_files[:6] if batch_files else [], 
                             once_files[:6] if once_files else [], 
-                            mapping_file, 
+                            mapping_path, 
                             generate_word=need_weekly_report
                         )
 
