@@ -1087,9 +1087,9 @@ def main():
             <div class="info-box">
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
-                    <div>支持上传分批及一次性逾期销售监控表进行合并清洗</div>
+                    <div>支持上传分批次及一次性逾期销售监控表进行合并清洗</div>
                     <div style="margin-top: 4px;">系统将自动生成对应的逾期销售监控表及大区催收提醒内容</div>
-                    <div style="margin-top: 4px;">已配置自动读取本地【客户关系清单】，可勾选生成Word周报</div>
+                    <div style="margin-top: 4px;">已配置自动读取本地客户关系清单，可勾选生成Word周报</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1098,7 +1098,7 @@ def main():
 
             c1, c2 = st.columns(2)
             with c1:
-                batch_files = st.file_uploader("📂 1. 逾期销售监控表(分批)", type=['xlsx', 'csv'], accept_multiple_files=True)
+                batch_files = st.file_uploader("📂 1. 逾期销售监控表(分批次)", type=['xlsx', 'csv'], accept_multiple_files=True)
                 if batch_files and len(batch_files) > 6: st.warning("⚠️ 最多上传 6 个分批文件，多余的可能被忽略。")
             with c2:
                 once_files = st.file_uploader("📂 2. 逾期销售监控表(一次性)", type=['xlsx', 'csv'], accept_multiple_files=True)
