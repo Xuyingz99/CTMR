@@ -639,7 +639,7 @@ def generate_customer_analysis_report_zj(df_processed, today_display):
             elif '调整后待执行数量' in col_str: exec_qty_col = col_name
             elif '调整后待追加保证金金额' in col_str: am_col = col_name
             elif '逾期' in col_str and '天' in col_str: an_col = col_name
-            elif '保证金类型' in col_str: deposit_type_col = col_name
+            elif '保证金类型' in col_str: deposit_type_col = deposit_type_col
 
         if not c_col or not am_col: return "客户分析报告生成失败：缺少必要的列数据。"
 
@@ -881,21 +881,6 @@ def process_additional_margin_logic(uploaded_file, region_filter):
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", ""
 
 # ============================================================================
-# 辅助渲染函数
-# ============================================================================
-
-def format_html_content_for_credit(text):
-    """(信用日报专用) 将纯文本按原有格式美化为 HTML 列表"""
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
-    list_html = ""
-    for line in lines:
-        if "情况如下：" in line or "【" in line:
-             list_html += f"<div style='font-weight: bold; margin-top: 8px; margin-bottom: 4px; color: #1f1f1f;'>{line.replace('**', '')}</div>"
-        else:
-             list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #333; line-height: 1.6;'>• {line}</div>"
-    return list_html
-
-# ============================================================================
 # PART 3: 主界面路由与交互逻辑
 # ============================================================================
 
@@ -1028,7 +1013,8 @@ def main():
                                 }
                                 for center_name, content in word_text_dict.items():
                                     theme = center_themes.get(center_name, {"bg": "#fcf8f2", "bd": "#f0e6d2", "bar": "#6c757d"})
-                                    html_content = format_html_content_for_credit(content)
+                                    # 注意：format_html_content_for_credit 定义在 style.py 中会更好，这里直接用简单替换兼容
+                                    html_content = content.replace('\n', '<br>')
                                     st.markdown(f"""
                                     <div style="background-color: {theme['bg']}; padding: 20px 25px; border-radius: 0 8px 8px 0; border: 1px solid {theme['bd']}; border-left: 4px solid {theme['bar']}; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
                                         {html_content}
@@ -1070,20 +1056,22 @@ def main():
                 <div style="margin-left: 2px;">
                     <div>支持上传分批及一次性逾期销售监控表进行合并清洗</div>
                     <div style="margin-top: 4px;">系统将自动生成对应的逾期销售监控表及大区催收提醒内容</div>
-                    <div style="margin-top: 4px;">已配置自动读取本地【客户关系清单】，可勾选生成Word周报</div>
+                    <div style="margin-top: 4px;"><strong>请注意第 3 个框：</strong>如果 Github 读取清单失败，可手动在此上传保证匹配！</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
             need_weekly_report = st.checkbox("📄 需要同时生成逾期销售周报 (Word)")
 
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
                 batch_files = st.file_uploader("📂 1. 逾期销售监控表(分批)", type=['xlsx', 'csv'], accept_multiple_files=True)
                 if batch_files and len(batch_files) > 6: st.warning("⚠️ 最多上传 6 个分批文件。")
             with c2:
                 once_files = st.file_uploader("📂 2. 逾期销售监控表(一次性)", type=['xlsx', 'csv'], accept_multiple_files=True)
                 if once_files and len(once_files) > 6: st.warning("⚠️ 最多上传 6 个一次性文件。")
+            with c3:
+                mapping_file = st.file_uploader("🔗 3. 客户清单 (备用)", type=['xlsx'])
 
             if st.button("🚀 开始处理 / Analyze"):
                 if batch_files or once_files:
@@ -1091,11 +1079,17 @@ def main():
                         excel_io, word_io, reminders, logs = process_overdue_data(
                             batch_files[:6] if batch_files else [], 
                             once_files[:6] if once_files else [], 
+                            mapping_file=mapping_file, 
                             generate_word=need_weekly_report
                         )
 
                         if excel_io:
                             st.success("✅ 数据处理与分析成功！")
+                            # 打印所有的寻找清单日志，让你知道它到底找到了什么
+                            for log in logs: 
+                                if "✅" in log: st.success(log)
+                                elif "⚠️" in log: st.warning(log)
+
                             if reminders:
                                 st.markdown("### 📢 逾期催收业务提醒")
                                 colors = ["#eef5ff", "#ebf9f1", "#fff6e5", "#f9ebf9", "#fff0f0"]
@@ -1125,8 +1119,6 @@ def main():
                                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                         use_container_width=True
                                     )
-                            for log in logs:
-                                if "⚠️" in log: st.warning(log)
                         else:
                             st.error("处理失败，请查看日志")
                             for log in logs: st.code(log)
