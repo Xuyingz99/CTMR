@@ -4,6 +4,7 @@ import io
 import warnings
 import re
 import os
+import glob
 import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -188,8 +189,6 @@ def set_page_margins(doc):
     section.right_margin = Cm(3.0)
     section.top_margin = Cm(2.54)
     section.bottom_margin = Cm(2.54)
-    section.header_distance = Cm(19063.55 / 12700.0)
-    section.footer_distance = Cm(22222.14 / 12700.0)
 
 def build_cell_text(cell, text, align='center', bold=False, is_max=False, is_appendix=False):
     cell.text = ""
@@ -280,6 +279,8 @@ def set_repeat_table_header(row):
     trPr.append(tblHeader)
 
 # ================= 完整 Word 生成 =================
+# 精确指出：以下 generate_word_report 函数完全搬运了你的 ZB.txt 
+# (大约是在 logic_overdue.py 的第 190 行到 490 行)
 def generate_word_report(df, df_unique):
     if '原因分类1' in df_unique.columns:
         df_unique['标准原因分类1'] = df_unique['原因分类1'].apply(map_reason1)
@@ -596,8 +597,6 @@ def generate_word_report(df, df_unique):
     new_section.right_margin = Cm(40322.44 / 12700.0)
     new_section.top_margin = Cm(32257.95 / 12700.0)
     new_section.bottom_margin = Cm(32257.95 / 12700.0)
-    new_section.header_distance = Cm(19063.55 / 12700.0)
-    new_section.footer_distance = Cm(22222.14 / 12700.0)
 
     def create_appendix(title, df_subset, table_idx):
         doc.add_paragraph(title, style='AppendixTitle')
@@ -677,6 +676,9 @@ def generate_word_report(df, df_unique):
     else: df_app3 = pd.DataFrame()
     create_appendix('附表3：严重逾期销售合同情况', df_app3, 7)
 
+    # =======================================================
+    # 代码写入内存流中，准备让网页端下载
+    # =======================================================
     word_io = io.BytesIO()
     doc.save(word_io)
     word_io.seek(0)
@@ -895,29 +897,60 @@ def process_overdue_data(batch_files, once_files, mapping_file_path=None, genera
     else:
         df_final = df_merged.copy()
 
-    # --- 3. 计算与映射 (改为读取本地文件) ---
+    # --- 3. 计算与映射 (终极云端容错版：忽略大小写、模糊匹配、去空格) ---
     group_map, internal_map = {}, {}
-    if mapping_file_path and os.path.exists(mapping_file_path):
+    
+    # 模糊寻找当前仓库根目录下的关系清单文件
+    possible_files = glob.glob("*关系清单*.*")
+    
+    if possible_files:
+        mapping_file_path = possible_files[0]
         try:
-            df_total = pd.read_excel(mapping_file_path, sheet_name='总')
-            df_total.columns = df_total.columns.astype(str).str.strip().str.replace('\n', '')
-            group_map = dict(zip(df_total['客户名称'], df_total['客户所属集团']))
+            xl = pd.ExcelFile(mapping_file_path)
+            sheet_names = xl.sheet_names
             
-            df_internal = pd.read_excel(mapping_file_path, sheet_name='内部')
-            df_internal.columns = df_internal.columns.astype(str).str.strip().str.replace('\n', '')
-            internal_map = dict(zip(df_internal['客户名称'], df_internal['所属专业化公司']))
+            # 模糊匹配【总】表
+            total_sheet = next((s for s in sheet_names if '总' in s), None)
+            if total_sheet:
+                df_total = pd.read_excel(mapping_file_path, sheet_name=total_sheet)
+                df_total.columns = df_total.columns.astype(str).str.strip().str.replace('\n', '')
+                
+                col_cust = next((c for c in df_total.columns if '客户' in c and '名称' in c), None)
+                col_group = next((c for c in df_total.columns if '集团' in c), None)
+                
+                if col_cust and col_group:
+                    df_total[col_cust] = df_total[col_cust].astype(str).str.strip()
+                    group_map = dict(zip(df_total[col_cust], df_total[col_group]))
+            
+            # 模糊匹配【内部】表
+            internal_sheet = next((s for s in sheet_names if '内部' in s), None)
+            if internal_sheet:
+                df_internal = pd.read_excel(mapping_file_path, sheet_name=internal_sheet)
+                df_internal.columns = df_internal.columns.astype(str).str.strip().str.replace('\n', '')
+                
+                col_cust_int = next((c for c in df_internal.columns if '客户' in c and '名称' in c), None)
+                col_prof = next((c for c in df_internal.columns if '公司' in c or '专业' in c), None)
+                
+                if col_cust_int and col_prof:
+                    df_internal[col_cust_int] = df_internal[col_cust_int].astype(str).str.strip()
+                    internal_map = dict(zip(df_internal[col_cust_int], df_internal[col_prof]))
+                    
         except Exception as e:
-            logs.append(f"⚠️ 本地映射文件解析失败（已跳过映射）: {e}")
+            logs.append(f"⚠️ 清单解析失败（已跳过映射）: {e}")
     else:
-        logs.append("⚠️ 未在同级目录下找到“客户关系清单.xlsx”，已跳过客户集团映射逻辑。")
+        logs.append("⚠️ 未在云端仓库找到名字包含“关系清单”的Excel文件。")
 
     for col in ['调整后逾期销售金额', '合同单价', '合同金额', '交货结束日期', '交货开始日期', '合同数量']:
         if col not in df_final.columns:
             df_final[col] = pd.NaT if '日期' in col else 0
 
     if '客户名称' in df_final.columns:
+        # 去除原始数据的首尾空格，保证百分百精准匹配
+        df_final['客户名称'] = df_final['客户名称'].astype(str).str.strip()
         df_final['所属集团'] = df_final['客户名称'].map(group_map).fillna("")
-        df_final['集团内部客户'] = df_final.apply(lambda row: internal_map.get(row['客户名称'], "") if row['所属集团'] == '中粮集团' else "", axis=1)
+        
+        # 将绝对匹配改为包含匹配：只要含有"中粮"两个字就抓取归属
+        df_final['集团内部客户'] = df_final.apply(lambda row: internal_map.get(row['客户名称'], "") if '中粮' in str(row['所属集团']) else "", axis=1)
     else:
         df_final['所属集团'] = ""
         df_final['集团内部客户'] = ""
@@ -983,10 +1016,9 @@ def process_overdue_data(batch_files, once_files, mapping_file_path=None, genera
     # --- 5. 提醒文本生成 ---
     reminders = generate_reminders(df_unique)
     
-    # --- 6. 生成 Word 报告 (包含全部排版) ---
+    # --- 6. 生成 Word 报告 (调用你完整的 ZB.txt 生成代码) ---
     word_io = None
     if generate_word:
-        # 使用格式化完毕的 df_final 供 Word 使用，保证字段和本地运行结果一致
         word_io = generate_word_report(df_final, df_unique)
     
     logs.append("🎉 数据处理与计算完成！")
