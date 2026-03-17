@@ -38,7 +38,7 @@ def clean_text_for_match(text):
     """强力去污：清除所有可见/不可见空格，并将中文括号转为英文括号，专门用于匹配"""
     if pd.isna(text): return ""
     s = str(text).strip()
-    s = re.sub(r'\s+', '', s) # 清除所有类型的空格（包括换行、tab、全角空格）
+    s = re.sub(r'\s+', '', s)
     s = s.replace('（', '(').replace('）', ')')
     return s
 
@@ -100,23 +100,19 @@ def locate_header_and_read_stream(file_stream, key_columns):
         file_stream.seek(0)
         df_raw = pd.read_excel(file_stream, header=None)
         header_row_index = -1
-        
         for i, row in df_raw.iterrows():
             row_values = [str(x).strip().replace('\n', '').replace(' ', '') for x in row.values if pd.notna(x)]
             match_count = sum(1 for key in key_columns if key in row_values)
             if match_count >= len(key_columns) - 1:
                 header_row_index = i
                 break
-        
         if header_row_index == -1: return None
         file_stream.seek(0)
         df = pd.read_excel(file_stream, header=header_row_index)
         df.columns = df.columns.astype(str).str.replace('\n', '', regex=False).str.strip()
-        
         if '大区' in df.columns:
             col_idx = df.columns.get_loc('大区')
             df = df.iloc[:, col_idx:]
-        
         df.dropna(how='all', inplace=True)
         return df
     except Exception: return None
@@ -132,11 +128,9 @@ def process_basic_columns(df, date_cols, float_cols, int_cols=None):
                 corrected = pd.to_datetime(clean_raw, format='%Y%m%d', errors='coerce')
                 temp_dates.loc[mask_invalid] = corrected
             df[col] = temp_dates
-
     for col in float_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-    
     if int_cols:
         for col in int_cols:
             if col in df.columns:
@@ -169,7 +163,6 @@ def init_styles(doc):
     style_tb.paragraph_format.space_before = Pt(0)
     style_tb.paragraph_format.space_after = Pt(0)
     style_tb.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    style_tb.paragraph_format.first_line_indent = Pt(0)
 
     style_nm = doc.styles.add_style('NormalContent', 1)
     set_font_mixed(style_nm, 14.0, False, '仿宋_GB2312', 'Times New Roman')
@@ -187,7 +180,6 @@ def init_styles(doc):
     style_app.paragraph_format.space_before = Pt(0)
     style_app.paragraph_format.space_after = Pt(0)
     style_app.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    style_app.paragraph_format.first_line_indent = Pt(0)
 
 def set_page_margins(doc):
     section = doc.sections[0]
@@ -225,12 +217,10 @@ def build_cell_text(cell, text, align='center', bold=False, is_max=False, is_app
         if not part: continue
         run = p.add_run(part)
         if is_max: run.font.color.rgb = RGBColor(255, 0, 0)
-        
         if re.match(r'^[a-zA-Z0-9.,%+-]+$', part):
             set_font_mixed(run, en_font_sz, bold, '微软雅黑', 'Times New Roman')
         else:
             set_font_mixed(run, font_sz, bold, '微软雅黑', 'Times New Roman')
-            
     cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
 def set_cell_background(cell, fill_color):
@@ -248,7 +238,6 @@ def apply_table_borders(table):
     tblLayout = OxmlElement('w:tblLayout')
     tblLayout.set(qn('w:type'), 'fixed')
     tblPr.append(tblLayout)
-    
     tblBorders = OxmlElement('w:tblBorders')
     for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
         border = OxmlElement(f'w:{border_name}')
@@ -258,7 +247,6 @@ def apply_table_borders(table):
         border.set(qn('w:color'), '000000')
         tblBorders.append(border)
     tblPr.append(tblBorders)
-    
     tblCellMar = OxmlElement('w:tblCellMar')
     for m in [('top', '28'), ('bottom', '28'), ('left', '57'), ('right', '57')]:
         node = OxmlElement(f'w:{m[0]}')
@@ -301,7 +289,6 @@ def generate_word_report(df, df_unique):
 
     # ----- (三) 逾期销售天数 -----
     doc.add_paragraph('（三）逾期销售天数', style='ChapterTitle')
-
     total_qty = df_unique['逾期数量（万吨）'].sum()
     safe_total_qty = total_qty if total_qty > 0 else 1e-9
     avg_days_val = (df_unique['逾期数量（万吨）'] * df_unique['逾期天数']).sum() / safe_total_qty if total_qty > 0 else 0
@@ -900,19 +887,25 @@ def process_overdue_data(batch_files, once_files, generate_word=False):
     else:
         df_final = df_merged.copy()
 
-    # --- 3. 强力匹配逻辑 (去空格、换行、全角半角统一、包含匹配) ---
+    # --- 3. 强力匹配逻辑 (解决Github环境部署读取问题) ---
     group_map, internal_map = {}, {}
     
-    # 获取当前工作目录下的文件，寻找名字里带有“清单”的 Excel
-    cwd = os.getcwd()
-    possible_files = glob.glob(os.path.join(cwd, "*清单*.*"))
+    # 向上寻找项目根目录 (适用于 Github Streamlit 部署架构)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(script_dir)
     
+    # 扩大搜索范围，只要带有“清单”二字均抓取
+    possible_files = glob.glob(os.path.join(root_dir, "*清单*.*"))
+    if not possible_files: 
+        possible_files = glob.glob("*清单*.*") # 备用：搜索当前工作目录
+        
     if possible_files:
         mapping_file_path = possible_files[0]
         try:
             xl = pd.ExcelFile(mapping_file_path)
             sheet_names = xl.sheet_names
             
+            # 【总】表处理
             total_sheet = next((s for s in sheet_names if '总' in s), None)
             if total_sheet:
                 df_t = pd.read_excel(mapping_file_path, sheet_name=total_sheet)
@@ -924,6 +917,7 @@ def process_overdue_data(batch_files, once_files, generate_word=False):
                         v = str(row[col_g]).strip() if pd.notna(row[col_g]) else ""
                         if k and v: group_map[k] = v
 
+            # 【内部】表处理
             internal_sheet = next((s for s in sheet_names if '内部' in s), None)
             if internal_sheet:
                 df_i = pd.read_excel(mapping_file_path, sheet_name=internal_sheet)
@@ -934,10 +928,11 @@ def process_overdue_data(batch_files, once_files, generate_word=False):
                         k = clean_text_for_match(row[col_ci])
                         v = str(row[col_p]).strip() if pd.notna(row[col_p]) else ""
                         if k and v: internal_map[k] = v
+            logs.append("✅ 已成功读取云端《客户关系清单》进行智能匹配！")
         except Exception as e:
             logs.append(f"⚠️ 解析关系清单失败: {e}")
     else:
-        logs.append("⚠️ 云端仓库根目录下未找到名字包含“清单”的文件。")
+        logs.append("⚠️ 未在云端根目录找到名字包含“清单”的文件，跳过匹配。")
 
     for col in ['调整后逾期销售金额', '合同单价', '合同金额', '交货结束日期', '交货开始日期', '合同数量']:
         if col not in df_final.columns:
@@ -953,7 +948,7 @@ def process_overdue_data(batch_files, once_files, generate_word=False):
             return ""
 
         def get_internal(cust_name, group_name):
-            if '中粮' not in str(group_name): return "" # 前提是集团名字含"中粮"
+            if '中粮' not in str(group_name): return "" 
             c_clean = clean_text_for_match(cust_name)
             if not c_clean: return ""
             if c_clean in internal_map: return internal_map[c_clean]
@@ -1028,7 +1023,7 @@ def process_overdue_data(batch_files, once_files, generate_word=False):
     # --- 5. 提醒文本生成 ---
     reminders = generate_reminders(df_unique)
     
-    # --- 6. 生成 Word 报告 (调用完整的排版生成代码) ---
+    # --- 6. 生成 Word 报告 ---
     word_io = None
     if generate_word:
         word_io = generate_word_report(df_final, df_unique)
