@@ -824,7 +824,7 @@ def beautify_excel_io(df_output):
     return final_output
 
 # ================= 主控制逻辑 =================
-def process_overdue_data(batch_files, once_files, generate_word=False):
+def process_overdue_data(batch_files, once_files, mapping_file=None, generate_word=False):
     logs = []
     
     header_keywords = ["大区", "经营部", "合同编号", "客户名称"]
@@ -887,52 +887,52 @@ def process_overdue_data(batch_files, once_files, generate_word=False):
     else:
         df_final = df_merged.copy()
 
-    # --- 3. 强力匹配逻辑 (解决Github环境部署读取问题) ---
+    # --- 3. 强力匹配逻辑 (支持备用上传 + 全量去空格 + 模糊匹配) ---
     group_map, internal_map = {}, {}
+    mapping_source = None
     
-    # 向上寻找项目根目录 (适用于 Github Streamlit 部署架构)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.dirname(script_dir)
-    
-    # 扩大搜索范围，只要带有“清单”二字均抓取
-    possible_files = glob.glob(os.path.join(root_dir, "*清单*.*"))
-    if not possible_files: 
-        possible_files = glob.glob("*清单*.*") # 备用：搜索当前工作目录
-        
-    if possible_files:
-        mapping_file_path = possible_files[0]
+    if mapping_file is not None:
+        mapping_source = mapping_file
+        logs.append("✅ 已使用您在网页【手动上传】的《客户关系清单》。")
+    else:
+        # 全云端仓库递归搜索
+        possible_files = glob.glob("**/*清单*.xlsx", recursive=True)
+        if possible_files:
+            mapping_source = possible_files[0]
+            logs.append(f"✅ 已自动找到 Github 仓库中的清单：{mapping_source}")
+        else:
+            logs.append("⚠️ 未在云端或上传框找到“清单”，如果需要匹配集团，请尝试【手动上传】！")
+
+    if mapping_source:
         try:
-            xl = pd.ExcelFile(mapping_file_path)
+            xl = pd.ExcelFile(mapping_source)
             sheet_names = xl.sheet_names
             
             # 【总】表处理
             total_sheet = next((s for s in sheet_names if '总' in s), None)
             if total_sheet:
-                df_t = pd.read_excel(mapping_file_path, sheet_name=total_sheet)
+                df_t = pd.read_excel(mapping_source, sheet_name=total_sheet)
                 col_c = next((c for c in df_t.columns if '客户' in str(c) and '名称' in str(c)), None)
                 col_g = next((c for c in df_t.columns if '集团' in str(c)), None)
                 if col_c and col_g:
                     for _, row in df_t.iterrows():
                         k = clean_text_for_match(row[col_c])
                         v = str(row[col_g]).strip() if pd.notna(row[col_g]) else ""
-                        if k and v: group_map[k] = v
+                        if k and v and v != 'nan': group_map[k] = v
 
             # 【内部】表处理
             internal_sheet = next((s for s in sheet_names if '内部' in s), None)
             if internal_sheet:
-                df_i = pd.read_excel(mapping_file_path, sheet_name=internal_sheet)
+                df_i = pd.read_excel(mapping_source, sheet_name=internal_sheet)
                 col_ci = next((c for c in df_i.columns if '客户' in str(c) and '名称' in str(c)), None)
                 col_p = next((c for c in df_i.columns if '公司' in str(c) or '专业' in str(c)), None)
                 if col_ci and col_p:
                     for _, row in df_i.iterrows():
                         k = clean_text_for_match(row[col_ci])
                         v = str(row[col_p]).strip() if pd.notna(row[col_p]) else ""
-                        if k and v: internal_map[k] = v
-            logs.append("✅ 已成功读取云端《客户关系清单》进行智能匹配！")
+                        if k and v and v != 'nan': internal_map[k] = v
         except Exception as e:
-            logs.append(f"⚠️ 解析关系清单失败: {e}")
-    else:
-        logs.append("⚠️ 未在云端根目录找到名字包含“清单”的文件，跳过匹配。")
+            logs.append(f"⚠️ 关系清单解析失败: {e}")
 
     for col in ['调整后逾期销售金额', '合同单价', '合同金额', '交货结束日期', '交货开始日期', '合同数量']:
         if col not in df_final.columns:
