@@ -517,7 +517,7 @@ def create_A_summary_sheet(workbook, ws_A, today_date_str):
             ws_summary.row_dimensions[row].height = row_height
         return True, logs
     except: return False, []
-        def process_margin_deposit_logic(current_file, prev_file):
+def process_margin_deposit_logic(current_file, prev_file):
     try:
         book = openpyxl.load_workbook(current_file)
         if "WSBZJQKB" in book.sheetnames: remove_empty_rows(book["WSBZJQKB"])
