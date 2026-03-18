@@ -1,4 +1,3 @@
-# utils/logic_XS.py
 import pandas as pd
 import os
 import io
@@ -330,6 +329,7 @@ def generate_collection_reminder(df_unique):
             lines.append(f"{i}、{v}{rv_stats.loc[v, '合同编号']}笔，逾期数量{format_qty(rv_stats.loc[v, '逾期数量（万吨）'])}万吨，逾期金额{format_num(v_amt, 0, True)}万元（{v_ratio}）。")
 
     return "\n".join(lines)
+
 def set_font_mixed(run_or_style, size_pt, bold=False, east_asia='仿宋_GB2312', ascii_font='Times New Roman'):
     run_or_style.font.size = Pt(size_pt)
     run_or_style.font.name = ascii_font
@@ -480,6 +480,7 @@ def set_repeat_table_header(row):
     tblHeader.set(qn('w:val'), "true")
     trPr.append(tblHeader)
 
+# ----------------- 第 1 部分完全结束（无任何缩进） -----------------
 def generate_report(df, df_unique):
     total_amount = df_unique['逾期金额（万元）'].sum()
     safe_total = total_amount if total_amount > 0 else 1e-9
@@ -590,7 +591,8 @@ def generate_report(df, df_unique):
                 run_part.font.color.rgb = RGBColor(255, 0, 0)
                 
     p2.paragraph_format.space_after = Pt(0)
-doc.add_paragraph('逾期销售提货分原因情况表', style='TableTitle')
+
+    doc.add_paragraph('逾期销售提货分原因情况表', style='TableTitle')
     table2 = doc.add_table(rows=1, cols=5)
     table2.alignment = WD_TABLE_ALIGNMENT.CENTER
     widths2 = [7.05, 1.99, 2.01, 1.76, 1.99]
@@ -814,7 +816,8 @@ doc.add_paragraph('逾期销售提货分原因情况表', style='TableTitle')
         set_cell_background(c, 'DEEBF6')
     set_table_row_height(table4.rows[-1], Cm(0.44).pt)
     apply_table_borders(table4)
-# ----- 附表 -----
+
+    # ----- 附表 -----
     new_section = doc.add_section(WD_SECTION.NEW_PAGE)
     new_section.orientation = WD_ORIENT.LANDSCAPE
     new_section.page_width = Cm(377194.0 / 12700.0)
