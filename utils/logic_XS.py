@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import glob
 import io
 import numpy as np
 import warnings
@@ -54,16 +55,28 @@ def locate_header_and_read(file_stream, key_columns):
 
         file_stream.seek(0)
         df = pd.read_excel(file_stream, header=header_row_index)
-        df.columns = df.columns.astype(str).str.replace('\n', '', regex=False).str.strip()
-        
-        if '大区' in df.columns:
-            col_idx = df.columns.get_loc('大区')
-            df = df.iloc[:, col_idx:]
-        
-        df.dropna(how='all', inplace=True)
         return df
     except Exception:
         return None
+
+def clean_column_names(df):
+    """完全复刻 YQ_XSV9.txt 的列名深度清洗逻辑"""
+    df.columns = [str(c).replace('\n', '').replace('\r', '').replace(' ', '').replace('(', '（').replace(')', '）').strip() for c in df.columns]
+    col_mapping = {}
+    for c in df.columns:
+        if '逾期金额' in c and '占比' not in c: col_mapping[c] = '逾期金额（万元）'
+        elif '逾期数量' in c: col_mapping[c] = '逾期数量（万吨）'
+        elif '合同数量' in c: col_mapping[c] = '合同数量（万吨）'
+        elif '合同单价' in c: col_mapping[c] = '合同单价'
+        elif '原因分类1' in c or '原因分类一' in c: col_mapping[c] = '原因分类1'
+        elif '原因分类2' in c or '原因分类二' in c: col_mapping[c] = '原因分类2'
+    df.rename(columns=col_mapping, inplace=True)
+    
+    if '大区' in df.columns:
+        col_idx = df.columns.get_loc('大区')
+        df = df.iloc[:, col_idx:]
+    df.dropna(how='all', inplace=True)
+    return df
 
 def process_basic_columns(df, date_cols, float_cols, int_cols=None):
     for col in date_cols:
@@ -79,7 +92,8 @@ def process_basic_columns(df, date_cols, float_cols, int_cols=None):
 
     for col in float_cols:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(',', '', regex=False)
+            if df[col].dtype == object:
+                df[col] = df[col].astype(str).str.replace(',', '', regex=False)
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     if int_cols:
@@ -91,17 +105,14 @@ def process_basic_columns(df, date_cols, float_cols, int_cols=None):
 def merge_detail_variety_columns(df):
     source_cols = ['明细品种', '细分品种']
     existing_cols = [c for c in source_cols if c in df.columns]
-    
     if not existing_cols:
         df['明细品种'] = ""
         return df
-    
     if '明细品种' in df.columns and '细分品种' in df.columns:
         df['明细品种'] = df['明细品种'].fillna(df['细分品种'])
         df['明细品种'] = df['明细品种'].astype(str).replace('nan', '')
     elif '细分品种' in df.columns:
         df.rename(columns={'细分品种': '明细品种'}, inplace=True)
-    
     if '明细品种' in df.columns:
         df['明细品种'] = df['明细品种'].astype(str).replace('nan', '')
     return df
@@ -125,18 +136,30 @@ def process_variety_logic(df):
     return df
 
 def get_customer_mappings():
-    mapping_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "客户关系清单.xlsx")
-    if not os.path.exists(mapping_file):
+    """完全复刻 YQ_XSV9.txt 的递归查找与强力清洗"""
+    base_dir = os.getcwd()
+    search_pattern = os.path.join(base_dir, "**", "*.xlsx")
+    files = glob.glob(search_pattern, recursive=True)
+    mapping_file = None
+    for f in files:
+        filename = os.path.basename(f)
+        if "客户关系清单" in filename and not filename.startswith("~$"):
+            mapping_file = f
+            break
+            
+    if not mapping_file:
         return {}, {}
     
     try:
         df_total = pd.read_excel(mapping_file, sheet_name='总')
-        df_total.columns = df_total.columns.astype(str).str.strip().str.replace('\n', '')
-        group_map = dict(zip(df_total['客户名称'], df_total['客户所属集团']))
+        df_total.columns = df_total.columns.astype(str).str.strip().str.replace('\n', '').str.replace('\r', '')
+        df_total.dropna(subset=['客户名称'], inplace=True)
+        group_map = dict(zip(df_total['客户名称'].astype(str).str.strip(), df_total['客户所属集团']))
         
         df_internal = pd.read_excel(mapping_file, sheet_name='内部')
-        df_internal.columns = df_internal.columns.astype(str).str.strip().str.replace('\n', '')
-        internal_company_map = dict(zip(df_internal['客户名称'], df_internal['所属专业化公司']))
+        df_internal.columns = df_internal.columns.astype(str).str.strip().str.replace('\n', '').str.replace('\r', '')
+        df_internal.dropna(subset=['客户名称'], inplace=True)
+        internal_company_map = dict(zip(df_internal['客户名称'].astype(str).str.strip(), df_internal['所属专业化公司']))
         
         return group_map, internal_company_map
     except Exception:
@@ -151,11 +174,10 @@ def map_reason1(x):
 
 # ================= 格式化与催收提醒 =================
 def format_num(val, dec=2, is_int=False, is_percent=False):
+    """底层数值格式化，精准修复 GE5.txt 中整数强转的 Bug"""
     if pd.isna(val) or val == "": return ""
-    try:
-        d_val = Decimal(str(round(float(val), 6)))
-    except:
-        return val
+    try: d_val = Decimal(str(round(float(val), 6)))
+    except: return val
     
     if is_percent:
         if d_val == 0: return "0%"
@@ -166,31 +188,51 @@ def format_num(val, dec=2, is_int=False, is_percent=False):
             s_val = f"{float(abs(d_val)):.6f}"
             if '.' in s_val:
                 dec_part = s_val.split('.')[1]
-                non_zero_idx = 0
-                for i, digit in enumerate(dec_part):
-                    if digit != '0':
-                        non_zero_idx = i + 1
-                        break
-                q_str = '0.' + '0' * (non_zero_idx - 1) + '1' if non_zero_idx > 0 else '1'
-                rounded = d_val.quantize(Decimal(q_str), rounding=ROUND_HALF_UP)
-                res = f"{float(rounded)}".rstrip('0').rstrip('.')
-                return f"{res}%"
+                non_zero_idx = next((i for i, digit in enumerate(dec_part) if digit != '0'), -1)
+                if non_zero_idx != -1:
+                    q_str = '0.' + '0' * non_zero_idx + '1'
+                    rounded = d_val.quantize(Decimal(q_str), rounding=ROUND_HALF_UP)
+                    return f"{float(rounded)}".rstrip('0').rstrip('.') + "%"
             return f"{float(d_val)}%"
             
     if is_int:
         rounded_int = d_val.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         return f"{int(rounded_int):,}"
     
-    # 修正：当不需要取整时（如逾期数量），保留最多dec位小数，绝不强行取整！
-    res = f"{float(d_val):,.{dec}f}"
+    q = Decimal('1.' + '0' * dec) if dec > 0 else Decimal('1')
+    rounded = d_val.quantize(q, rounding=ROUND_HALF_UP)
+    res = f"{float(rounded):,.{dec}f}"
     if '.' in res:
         res = res.rstrip('0').rstrip('.')
     if res == "": res = "0"
     return res
 
 def format_qty(val):
-    return format_num(val, dec=2, is_int=False, is_percent=False)
+    """完美复刻 GE5.txt 意图：绝不强行取整，自动剔除无用 0"""
+    if pd.isna(val) or val == "": return ""
+    try: d_val = Decimal(str(round(float(val), 6)))
+    except: return val
+    if d_val == 0: return "0"
     
+    if abs(d_val) >= 1:
+        return format_num(val, dec=2)  # 保留两位小数，而不是 is_int=True
+        
+    q2 = Decimal('1.00')
+    rounded2 = d_val.quantize(q2, rounding=ROUND_HALF_UP)
+    if rounded2 != 0:
+        res = f"{float(rounded2):.2f}".rstrip('0').rstrip('.')
+        return res if res else "0"
+    else:
+        s_val = f"{float(abs(d_val)):.10f}"
+        if '.' in s_val:
+            dec_part = s_val.split('.')[1]
+            non_zero_idx = next((i for i, digit in enumerate(dec_part) if digit != '0'), -1)
+            if non_zero_idx != -1:
+                q_str = '0.' + '0' * non_zero_idx + '1'
+                rounded = d_val.quantize(Decimal(q_str), rounding=ROUND_HALF_UP)
+                return f"{float(rounded)}".rstrip('0').rstrip('.')
+    return f"{float(d_val)}".rstrip('0').rstrip('.')
+
 def generate_collection_reminder(df_unique):
     yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
     date_str = f"{yesterday.month}月{yesterday.day}日"
@@ -252,12 +294,9 @@ def generate_collection_reminder(df_unique):
                         has_severe = '是否严重逾期' in d_df.columns
                         
                         def get_label(row):
-                            if pd.to_numeric(row.get('逾期天数', 0), errors='coerce') >= 60:
-                                return "逾期60天以上"
-                            if has_severe and '严重逾期' in str(row.get('是否严重逾期', '')):
-                                return "严重逾期"
-                            if has_focus and '重点关注' in str(row.get('是否重点关注', '')):
-                                return "重点关注"
+                            if pd.to_numeric(row.get('逾期天数', 0), errors='coerce') >= 60: return "逾期60天以上"
+                            if has_severe and '严重逾期' in str(row.get('是否严重逾期', '')): return "严重逾期"
+                            if has_focus and '重点关注' in str(row.get('是否重点关注', '')): return "重点关注"
                             return ""
                         
                         d_df['特殊标签'] = d_df.apply(get_label, axis=1)
@@ -481,8 +520,6 @@ def set_repeat_table_header(row):
     tblHeader = OxmlElement('w:tblHeader')
     tblHeader.set(qn('w:val'), "true")
     trPr.append(tblHeader)
-
-# ----------------- 第 1 部分完全结束（无任何缩进） -----------------
 def generate_report(df, df_unique):
     total_amount = df_unique['逾期金额（万元）'].sum()
     safe_total = total_amount if total_amount > 0 else 1e-9
@@ -492,7 +529,6 @@ def generate_report(df, df_unique):
     set_page_margins(doc)
     init_styles(doc)
 
-    # ----- (三) 逾期销售天数 -----
     doc.add_paragraph('（三）逾期销售天数', style='ChapterTitle')
 
     total_qty = df_unique['逾期数量（万吨）'].sum()
@@ -567,10 +603,8 @@ def generate_report(df, df_unique):
     set_table_row_height(table1.rows[-1], Cm(0.48).pt)
     apply_table_borders(table1)
 
-    # ----- (四) 逾期销售原因 -----
     doc.add_paragraph('（四）逾期销售原因', style='ChapterTitle')
     r1_stats = df_unique.groupby('标准原因分类1').agg({'逾期金额（万元）': 'sum'})
-    
     max_r1 = r1_stats['逾期金额（万元）'].idxmax() if not r1_stats.empty else None
     
     p2 = doc.add_paragraph(style='NormalContent')
@@ -586,7 +620,6 @@ def generate_report(df, df_unique):
             is_last = (current_idx == r1_texts_count)
             punctuation = "；详情如下：" if is_last else "；"
             run_part = p2.add_run(text_part + punctuation)
-            
             is_max = (r1 == max_r1)
             set_font_mixed(run_part, 14.0, bold=is_max)
             if is_max:
@@ -654,10 +687,8 @@ def generate_report(df, df_unique):
     set_table_row_height(table2.rows[-1], Cm(0.46).pt)
     apply_table_borders(table2)
 
-    # ----- (五) 逾期销售分品种 -----
     doc.add_paragraph('（五）逾期销售分品种', style='ChapterTitle')
     variety_stats = df_unique.groupby('品种').agg({'逾期金额（万元）': 'sum', '合同编号': 'count', '逾期数量（万吨）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
-    
     max_v = variety_stats['逾期金额（万元）'].idxmax() if not variety_stats.empty else None
     
     p3 = doc.add_paragraph(style='NormalContent')
@@ -668,7 +699,6 @@ def generate_report(df, df_unique):
         is_last = (i == v_count - 1)
         punctuation = "。详情如下：" if is_last else "；"
         run_part = p3.add_run(text_part + punctuation)
-        
         is_max = (v == max_v)
         set_font_mixed(run_part, 14.0, bold=is_max)
         if is_max:
@@ -713,15 +743,12 @@ def generate_report(df, df_unique):
     set_table_row_height(table3.rows[-1], Cm(0.48).pt)
     apply_table_borders(table3)
 
-    # ----- (六) 逾期销售分客户 -----
     def get_cust_type(row):
-        grp = row.get('所属集团')
-        if pd.notna(grp) and str(grp).strip() != '' and '中粮集团' not in str(grp):
-            return '战略大客户', grp
-        intr = row.get('集团内部客户')
-        if pd.notna(intr):
-            return '集团内部客户', intr
-        return '中小客户', row['客户名称']
+        grp = str(row.get('所属集团', '')).strip()
+        intr = str(row.get('集团内部客户', '')).strip()
+        if grp and '中粮集团' not in grp and grp != 'nan': return '战略大客户', grp
+        if intr and intr != 'nan': return '集团内部客户', intr
+        return '中小客户', str(row.get('客户名称', '')).strip()
         
     df_unique['客户大类'], df_unique['展示客户名'] = zip(*df_unique.apply(get_cust_type, axis=1))
     c_stats = df_unique.groupby('客户大类')['逾期数量（万吨）'].sum().fillna(0)
@@ -734,7 +761,6 @@ def generate_report(df, df_unique):
     total_customers = strat_cnt + mid_cnt + int_cnt
 
     doc.add_paragraph('（六）逾期销售分客户', style='ChapterTitle')
-    
     max_c_type = c_stats.idxmax() if not c_stats.empty else None
     
     p4 = doc.add_paragraph(style='NormalContent')
@@ -785,8 +811,7 @@ def generate_report(df, df_unique):
 
     def add_cust_rows(c_type, subtotal_name, start_idx):
         sub_df = df_unique[df_unique['客户大类'] == c_type]
-        if sub_df.empty:
-            return start_idx
+        if sub_df.empty: return start_idx
         agg_df = sub_df.groupby('展示客户名').agg({'逾期数量（万吨）': 'sum', '品种': lambda x: '、'.join(x.dropna().astype(str).unique())}).sort_values(by='逾期数量（万吨）', ascending=False).reset_index()
         for _, row in agg_df.iterrows():
             cells = table4.add_row().cells
@@ -800,8 +825,7 @@ def generate_report(df, df_unique):
         sub_cells[0].merge(sub_cells[2])
         build_cell_text(sub_cells[0], subtotal_name, bold=True)
         build_cell_text(sub_cells[3], format_qty(agg_df['逾期数量（万吨）'].sum()), bold=True)
-        for c in [sub_cells[0], sub_cells[3]]:
-            set_cell_background(c, 'D9D9D9')
+        for c in [sub_cells[0], sub_cells[3]]: set_cell_background(c, 'D9D9D9')
         set_table_row_height(table4.rows[-1], Cm(0.44).pt)
         return start_idx
 
@@ -814,8 +838,7 @@ def generate_report(df, df_unique):
     tot_cells4[0].merge(tot_cells4[2])
     build_cell_text(tot_cells4[0], '汇总', bold=True)
     build_cell_text(tot_cells4[3], format_qty(df_unique['逾期数量（万吨）'].sum()), bold=True)
-    for c in [tot_cells4[0], tot_cells4[3]]:
-        set_cell_background(c, 'DEEBF6')
+    for c in [tot_cells4[0], tot_cells4[3]]: set_cell_background(c, 'DEEBF6')
     set_table_row_height(table4.rows[-1], Cm(0.44).pt)
     apply_table_borders(table4)
 
@@ -833,7 +856,6 @@ def generate_report(df, df_unique):
 
     def create_appendix(title, df_subset, table_idx):
         doc.add_paragraph(title, style='AppendixTitle')
-        
         p_app_unit = doc.add_paragraph()
         p_app_unit.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p_app_unit.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
@@ -846,29 +868,22 @@ def generate_report(df, df_unique):
         table = doc.add_table(rows=1, cols=15)
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         
-        if table_idx == 5:
-            widths_app = [9386.17, 15792.96, 25313.53, 22154.94, 12656.77, 15792.96, 12656.77, 12656.77, 18055.49, 18077.89, 117674.32, 39224.77, 12656.77, 13194.4, 14157.66]
-        elif table_idx == 6:
-            widths_app = [9430.97, 15860.16, 25403.14, 19959.61, 12544.76, 16128.98, 13127.19, 12253.54, 17921.08, 17921.08, 118771.98, 38104.7, 12701.57, 12947.98, 12947.98]
-        else:
-            widths_app = [11021.47, 16128.98, 24775.9, 20430.04, 11962.32, 15815.36, 13440.81, 11962.32, 18212.3, 18212.3, 111021.11, 45385.14, 13127.19, 12253.54, 14516.08]
-        
+        if table_idx == 5: widths_app = [9386.17, 15792.96, 25313.53, 22154.94, 12656.77, 15792.96, 12656.77, 12656.77, 18055.49, 18077.89, 117674.32, 39224.77, 12656.77, 13194.4, 14157.66]
+        elif table_idx == 6: widths_app = [9430.97, 15860.16, 25403.14, 19959.61, 12544.76, 16128.98, 13127.19, 12253.54, 17921.08, 17921.08, 118771.98, 38104.7, 12701.57, 12947.98, 12947.98]
+        else: widths_app = [11021.47, 16128.98, 24775.9, 20430.04, 11962.32, 15815.36, 13440.81, 11962.32, 18212.3, 18212.3, 111021.11, 45385.14, 13127.19, 12253.54, 14516.08]
         set_fixed_col_widths(table, widths_app)
 
-        headers = ['序号', '经营部', '客户名称', '交货结束日期', '合同\n数量', '合同\n单价', '逾期\n天数', '逾期数量',
-                   '原因\n分类1', '原因\n分类2', '具体逾期原因', '解决方案及解决时间', '责任人', '上级领导', '是否为赊销合同']
+        headers = ['序号', '经营部', '客户名称', '交货结束日期', '合同\n数量', '合同\n单价', '逾期\n天数', '逾期数量', '原因\n分类1', '原因\n分类2', '具体逾期原因', '解决方案及解决时间', '责任人', '上级领导', '是否为赊销合同']
         for i, h in enumerate(headers):
             cell = table.cell(0, i)
             build_cell_text(cell, h, bold=True, is_appendix=True)
             set_cell_background(cell, 'D9D9D9')
-            
         set_table_row_height(table.rows[0], Cm(0.9).pt)
         set_repeat_table_header(table.rows[0])
 
         if not df_subset.empty:
             df_subset = df_subset.sort_values(by='逾期天数', ascending=False).reset_index(drop=True)
             leader_map = {'珠三角': '黄旭东', '福建': '肖灿', '广西': '丁峰', '海南': '宋永伍', '粤西': '张文韬'}
-            
             for i, row in df_subset.iterrows():
                 cells = table.add_row().cells
                 dept_val = str(row.get('经营部', '')) if pd.notna(row.get('经营部')) else ""
@@ -902,24 +917,17 @@ def generate_report(df, df_unique):
                 set_table_row_height(table.rows[-1], Cm(0.6).pt)
         else:
             empty_row = table.add_row().cells
-            for cell in empty_row:
-                build_cell_text(cell, '', is_appendix=True)
+            for cell in empty_row: build_cell_text(cell, '', is_appendix=True)
             set_table_row_height(table.rows[-1], Cm(0.6).pt)
         apply_table_borders(table)
 
     df_app1 = df[df['逾期天数'] >= 50]
     create_appendix('附表1：逾期60天以上的销售合同情况', df_app1, 5)
-    
-    if '是否重点关注' in df.columns:
-        df_app2 = df[df['是否重点关注'].astype(str).str.contains('重点关注', na=False)]
-    else:
-        df_app2 = pd.DataFrame()
+    if '是否重点关注' in df.columns: df_app2 = df[df['是否重点关注'].astype(str).str.contains('重点关注', na=False)]
+    else: df_app2 = pd.DataFrame()
     create_appendix('附表2：其他需要重点关注的销售合同情况（尤其是有潜在风险的）', df_app2, 6)
-    
-    if '是否严重逾期' in df.columns:
-        df_app3 = df[df['是否严重逾期'].astype(str).str.contains('严重逾期', na=False)]
-    else:
-        df_app3 = pd.DataFrame()
+    if '是否严重逾期' in df.columns: df_app3 = df[df['是否严重逾期'].astype(str).str.contains('严重逾期', na=False)]
+    else: df_app3 = pd.DataFrame()
     create_appendix('附表3：严重逾期销售合同情况', df_app3, 7)
 
     doc_io = io.BytesIO()
@@ -929,8 +937,7 @@ def generate_report(df, df_unique):
 
 def beautify_excel_for_io(wb):
     ws = wb.active
-    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
-                         top=Side(style='thin'), bottom=Side(style='thin'))
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     header_font = Font(name='微软雅黑', bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     body_font = Font(name='微软雅黑', size=10)
@@ -951,7 +958,6 @@ def beautify_excel_for_io(wb):
             elif source_val == 'once': current_fill = fill_once
         
         ws.row_dimensions[row[0].row].height = 20
-
         for cell in row:
             cell.border = thin_border
             cell.font = body_font
@@ -977,13 +983,10 @@ def beautify_excel_for_io(wb):
             elif "重点关注" in header_val: width = 15
             ws.column_dimensions[col[0].column_letter].width = width
         except: pass
-
     return wb
 
-# ================= 供网页端调用的主逻辑 =================
 def process_overdue_sales(batch_files, once_files, need_report=False):
     logs = []
-    
     header_keywords = ["大区", "经营部", "合同编号", "客户名称"]
     date_columns = ["合同签订日期", "交货开始日期", "交货结束日期", "预计完成日期"]
     all_numeric_columns = ["合同数量", "合同单价", "合同金额", "调整后逾期销售金额", "逾期天数I", "逾期天数Il", "逾期天数II", "逾期天数IV", "逾期天数V", "逾期天数VI"]
@@ -997,6 +1000,7 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
             if temp is not None: df_list.append(temp)
         if df_list:
             temp_combined = pd.concat(df_list, ignore_index=True).drop_duplicates()
+            temp_combined = clean_column_names(temp_combined)
             df_batch = process_basic_columns(temp_combined, date_columns, all_numeric_columns, special_int_columns)
             calc_cols = [c for c in special_int_columns if c in df_batch.columns]
             df_batch['逾期天数'] = df_batch[calc_cols].max(axis=1).fillna(0) if calc_cols else 0
@@ -1010,6 +1014,7 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
             if temp is not None: df_list.append(temp)
         if df_list:
             temp_combined = pd.concat(df_list, ignore_index=True).drop_duplicates()
+            temp_combined = clean_column_names(temp_combined)
             df_once = process_basic_columns(temp_combined, date_columns, all_numeric_columns)
             if '逾期天数' not in df_once.columns: df_once['逾期天数'] = 0
             df_once['_Data_Source'] = 'once'
@@ -1037,8 +1042,13 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
             df_final[col] = pd.NaT if '日期' in col else 0
 
     if '客户名称' in df_final.columns:
-        df_final['所属集团'] = df_final['客户名称'].map(group_map).fillna("")
-        df_final['集团内部客户'] = df_final.apply(lambda row: internal_map.get(row['客户名称'], "") if row['所属集团'] == '中粮集团' else "", axis=1)
+        df_final['客户名称_clean'] = df_final['客户名称'].astype(str).str.strip()
+        df_final['所属集团'] = df_final['客户名称_clean'].map(group_map).fillna("")
+        df_final['集团内部客户'] = df_final.apply(
+            lambda row: internal_map.get(row['客户名称_clean'], "") if row['所属集团'] == '中粮集团' else "", 
+            axis=1
+        )
+        df_final.drop(columns=['客户名称_clean'], inplace=True)
     else:
         df_final['所属集团'] = ""
         df_final['集团内部客户'] = ""
