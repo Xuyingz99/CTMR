@@ -1,12 +1,9 @@
-# utils/style.py
+
 import streamlit as st
 import re
 
 def apply_custom_css():
-    """
-    注入设计师级 CSS (UI 优化版)
-    如果主程序中已经注入过，这里可作为备用或供其他独立页面调用。
-    """
+    """注入设计师级 CSS (UI 优化版)"""
     st.markdown("""
     <style>
         /* 1. 全局字体与配色 */
@@ -50,7 +47,50 @@ def apply_custom_css():
             margin-top: 0.5rem;
         }
 
-        /* 3. 说明框优化 (纯 HTML 左对齐) */
+        /* 3. 问候语 */
+        .greeting-text {
+            font-size: 2rem;
+            font-weight: 300;
+            color: var(--text-main);
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        /* 4. 功能选择器 */
+        div[role="radiogroup"] > label > div:first-child { display: none !important; }
+        div[role="radiogroup"] {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            width: 100%;
+            margin-bottom: 25px;
+        }
+        div[role="radiogroup"] label {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            cursor: pointer;
+            flex: 1;
+            transition: all 0.3s;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--text-sub);
+        }
+        div[role="radiogroup"] label[data-checked="true"] {
+            border: 2px solid transparent !important;
+            background: linear-gradient(white, white) padding-box, var(--btn-gradient) border-box !important;
+            color: var(--deepseek-blue) !important;
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
+        }
+
+        /* 5. 说明框优化 (纯 HTML 左对齐) */
         .info-box {
             background: #ffffff;
             border-left: 4px solid var(--deepseek-blue);
@@ -71,41 +111,107 @@ def apply_custom_css():
             align-items: center;
             gap: 8px;
         }
+
+        /* 6. 上传与按钮美化 */
+        [data-testid="stFileUploader"] section {
+            border-radius: 12px;
+            background-color: white;
+            border: 2px dashed #dbe0ea;
+            padding: 1.5rem;
+        }
+        [data-testid="stFileUploader"] section:hover { border-color: var(--deepseek-blue); }
+        
+        div.stButton > button {
+            width: 100%;
+            height: 60px;
+            border-radius: 12px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            background: var(--btn-gradient);
+            color: white;
+            border: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(77, 107, 254, 0.3);
+        }
+        div.stButton > button:hover {
+            transform: scale(1.02);
+            box-shadow: 0 8px 25px rgba(77, 107, 254, 0.4);
+            color: white;
+        }
+
+        #MainMenu, header, footer { visibility: hidden; }
+                
+     /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
+        [data-testid="stPills"] {
+            display: flex;
+            gap: 12px; /* 按钮之间的间距 */
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        
+        [data-testid="stPills"] button {
+            border-radius: 20px !important; /* 圆角胶囊形状 */
+            border: 1px solid #e0e0e0 !important;
+            background: white !important;
+            color: #5f6368 !important;
+            padding: 6px 20px !important;
+            font-size: 0.95rem !important;
+            transition: all 0.2s ease;
+            min-height: 40px !important; /* 强制高度，防止被压缩 */
+            height: auto !important;
+        }
+        
+        /* 选中状态：DeepSeek 蓝渐变 */
+        [data-testid="stPills"] button[aria-selected="true"] {
+            background: var(--btn-gradient) !important;
+            color: white !important;
+            border: none !important;
+            box-shadow: 0 4px 12px rgba(77, 107, 254, 0.3);
+            font-weight: 600 !important;
+        }
+        
+        /* 悬停效果 */
+        [data-testid="stPills"] button:hover {
+            border-color: var(--deepseek-blue) !important;
+            color: var(--deepseek-blue) !important;
+            transform: translateY(-1px);
+        }
+        [data-testid="stPills"] button[aria-selected="true"]:hover {
+            color: white !important;
+            transform: translateY(-1px);
+        }           
     </style>
     """, unsafe_allow_html=True)
 
-def display_pretty_report(title, report_text, bg_color="#f8f9fa"):
+def display_pretty_report(title, report_text, bg_color="#eef5ff"):
     """
-    前端渲染优化：支持多行文本自然换行渲染，去除多余字眼，呈现 DeepSeek 蓝简约美观排版。
-    兼容原有的信用报告和新增的逾期销售催收提醒文本。
+    前端渲染优化：将报告文本拆分为“抬头”和“列表项”，合并在一个带背景色的色块中展示
     """
-    if not report_text: 
-        return
-        
-    # 直接呈现干净的标题和内容，无多余提醒框嵌套
-    html_content = f"""
-    <div style="background-color: {bg_color}; border-left: 4px solid var(--deepseek-blue); padding: 20px; border-radius: 8px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-        <h4 style="color: var(--deepseek-dark); margin-top: 0; margin-bottom: 15px; font-weight: 600; font-size: 1.2rem;">{title}</h4>
-    """
+    if not report_text: return
     
-    lines = [line.strip() for line in report_text.split('\n') if line.strip()]
+    # 尝试拆分
+    parts = re.split(r'(分大区情况如下：|分经营部情况如下：|分客户情况如下：)', report_text)
     
-    for line in lines:
-        if line.endswith("：") or line.endswith(":"):
-            # 识别为大区/分类小标题（如：中粮贸易：、分大区看：）
-            html_content += f"<div style='font-weight: 700; margin-top: 15px; margin-bottom: 8px; color: var(--text-main); font-size: 1.05rem;'>{line}</div>"
-        elif line.startswith("•") or re.match(r'^\d+、', line):
-            # 识别为列表项或特殊标签客户（如：1、华北区... 或 • 某某客户...）
-            # 对于包含“严重逾期”或“重点关注”的文字给予轻度标红强调
-            if "严重逾期" in line or "重点关注" in line or "逾期60天以上" in line:
-                line = line.replace("严重逾期", "<span style='color: #d9534f; font-weight: 600;'>严重逾期</span>")
-                line = line.replace("重点关注", "<span style='color: #f0ad4e; font-weight: 600;'>重点关注</span>")
-                line = line.replace("逾期60天以上", "<span style='color: #c9302c; font-weight: 600;'>逾期60天以上</span>")
-            html_content += f"<div style='margin-left: 15px; margin-bottom: 6px; color: var(--text-sub); line-height: 1.6;'>{line}</div>"
-        else:
-            # 普通段落总括句
-            html_content += f"<div style='margin-bottom: 8px; color: var(--text-sub); line-height: 1.6;'>{line}</div>"
-            
-    html_content += "</div>"
+    header_text = parts[0]
+    detail_text = ""
+    if len(parts) > 1:
+        detail_text = "".join(parts[1:]) 
     
-    st.markdown(html_content, unsafe_allow_html=True)
+    # 构建列表部分的 HTML
+    list_html = ""
+    if detail_text:
+        lines = [line.strip() for line in detail_text.split('\n') if line.strip()]
+        for line in lines:
+            if "情况如下：" in line:
+                 list_html += f"<div style='font-weight: bold; margin-top: 12px; margin-bottom: 4px; color: #1f1f1f;'>{line}</div>"
+            else:
+                 list_html += f"<div style='margin-left: 10px; margin-bottom: 4px;'>• {line}</div>"
+                 
+    # 将头部和列表合并在同一个 div 中统一渲染
+    st.markdown(f"""
+    <div style="background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); margin-bottom: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+        <h4 style="margin-top: 0; color: #1f1f1f;">{title}</h4>
+        <div style="font-size: 1rem; color: #333; margin-bottom: 0px; line-height: 1.6;">{header_text}</div>
+        <div style="font-size: 1rem; color: #333; line-height: 1.6;">{list_html}</div>
+    </div>
+    """, unsafe_allow_html=True)
