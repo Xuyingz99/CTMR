@@ -177,18 +177,20 @@ def format_num(val, dec=2, is_int=False, is_percent=False):
                 return f"{res}%"
             return f"{float(d_val)}%"
             
-    rounded_int = d_val.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
     if is_int:
+        rounded_int = d_val.quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         return f"{int(rounded_int):,}"
     
-    if rounded_int == 0 and d_val != 0:
-        return f"{float(d_val):.2f}"
-    else:
-        return f"{int(rounded_int):,}"
+    # 修正：当不需要取整时（如逾期数量），保留最多dec位小数，绝不强行取整！
+    res = f"{float(d_val):,.{dec}f}"
+    if '.' in res:
+        res = res.rstrip('0').rstrip('.')
+    if res == "": res = "0"
+    return res
 
 def format_qty(val):
     return format_num(val, dec=2, is_int=False, is_percent=False)
-
+    
 def generate_collection_reminder(df_unique):
     yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
     date_str = f"{yesterday.month}月{yesterday.day}日"
