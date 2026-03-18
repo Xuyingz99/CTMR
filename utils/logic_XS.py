@@ -55,28 +55,27 @@ def locate_header_and_read(file_stream, key_columns):
 
         file_stream.seek(0)
         df = pd.read_excel(file_stream, header=header_row_index)
+        
+        df.columns = df.columns.astype(str).str.replace('\n', '', regex=False).str.strip()
+        
+        if '大区' in df.columns:
+            col_idx = df.columns.get_loc('大区')
+            # 防止"大区"列重复导致返回数组而引发报错
+            if isinstance(col_idx, np.ndarray):
+                start = np.where(col_idx)[0][0]
+            elif isinstance(col_idx, slice):
+                start = col_idx.start
+            else:
+                start = col_idx
+            df = df.iloc[:, start:]
+            
+        # 【核心修复】强制剔除所有重复重名的列，防止 concat 时引发 InvalidIndexError
+        df = df.loc[:, ~df.columns.duplicated()]
+        
+        df.dropna(how='all', inplace=True)
         return df
     except Exception:
         return None
-
-def clean_column_names(df):
-    """完全复刻 YQ_XSV9.txt 的列名深度清洗逻辑"""
-    df.columns = [str(c).replace('\n', '').replace('\r', '').replace(' ', '').replace('(', '（').replace(')', '）').strip() for c in df.columns]
-    col_mapping = {}
-    for c in df.columns:
-        if '逾期金额' in c and '占比' not in c: col_mapping[c] = '逾期金额（万元）'
-        elif '逾期数量' in c: col_mapping[c] = '逾期数量（万吨）'
-        elif '合同数量' in c: col_mapping[c] = '合同数量（万吨）'
-        elif '合同单价' in c: col_mapping[c] = '合同单价'
-        elif '原因分类1' in c or '原因分类一' in c: col_mapping[c] = '原因分类1'
-        elif '原因分类2' in c or '原因分类二' in c: col_mapping[c] = '原因分类2'
-    df.rename(columns=col_mapping, inplace=True)
-    
-    if '大区' in df.columns:
-        col_idx = df.columns.get_loc('大区')
-        df = df.iloc[:, col_idx:]
-    df.dropna(how='all', inplace=True)
-    return df
 
 def process_basic_columns(df, date_cols, float_cols, int_cols=None):
     for col in date_cols:
@@ -136,7 +135,6 @@ def process_variety_logic(df):
     return df
 
 def get_customer_mappings():
-    """完全复刻 YQ_XSV9.txt 的递归查找与强力清洗"""
     base_dir = os.getcwd()
     search_pattern = os.path.join(base_dir, "**", "*.xlsx")
     files = glob.glob(search_pattern, recursive=True)
@@ -174,7 +172,6 @@ def map_reason1(x):
 
 # ================= 格式化与催收提醒 =================
 def format_num(val, dec=2, is_int=False, is_percent=False):
-    """底层数值格式化，精准修复 GE5.txt 中整数强转的 Bug"""
     if pd.isna(val) or val == "": return ""
     try: d_val = Decimal(str(round(float(val), 6)))
     except: return val
@@ -208,14 +205,13 @@ def format_num(val, dec=2, is_int=False, is_percent=False):
     return res
 
 def format_qty(val):
-    """完美复刻 GE5.txt 意图：绝不强行取整，自动剔除无用 0"""
     if pd.isna(val) or val == "": return ""
     try: d_val = Decimal(str(round(float(val), 6)))
     except: return val
     if d_val == 0: return "0"
     
     if abs(d_val) >= 1:
-        return format_num(val, dec=2)  # 保留两位小数，而不是 is_int=True
+        return format_num(val, dec=2) 
         
     q2 = Decimal('1.00')
     rounded2 = d_val.quantize(q2, rounding=ROUND_HALF_UP)
@@ -1000,7 +996,6 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
             if temp is not None: df_list.append(temp)
         if df_list:
             temp_combined = pd.concat(df_list, ignore_index=True).drop_duplicates()
-            temp_combined = clean_column_names(temp_combined)
             df_batch = process_basic_columns(temp_combined, date_columns, all_numeric_columns, special_int_columns)
             calc_cols = [c for c in special_int_columns if c in df_batch.columns]
             df_batch['逾期天数'] = df_batch[calc_cols].max(axis=1).fillna(0) if calc_cols else 0
@@ -1014,7 +1009,6 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
             if temp is not None: df_list.append(temp)
         if df_list:
             temp_combined = pd.concat(df_list, ignore_index=True).drop_duplicates()
-            temp_combined = clean_column_names(temp_combined)
             df_once = process_basic_columns(temp_combined, date_columns, all_numeric_columns)
             if '逾期天数' not in df_once.columns: df_once['逾期天数'] = 0
             df_once['_Data_Source'] = 'once'
