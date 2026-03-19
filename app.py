@@ -12,15 +12,12 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 
-# === 导入功能模块 ===
 from utils.logic_credit import process_credit_report
 from utils.logic_XS import process_overdue_sales
-from utils.style import display_pretty_report  # 从你刚更新的 style.py 引入美化函数
+from utils.style import display_pretty_report 
 
-# 忽略警告
 warnings.filterwarnings('ignore')
 
-# --- 页面基础配置 ---
 st.set_page_config(
     page_title="Take It Easy - 智能办公助手",
     page_icon="✨",
@@ -28,14 +25,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 注入设计师级 CSS (UI 优化版) ---
 st.markdown("""
 <style>
-    /* 1. 全局字体与配色 */
     html { font-size: 18px !important; }
-
     :root {
-        /* DeepSeek 风格蓝色渐变 */
         --deepseek-blue: #4d6bfe;
         --deepseek-dark: #2b4cff;
         --btn-gradient: linear-gradient(90deg, #4d6bfe 0%, #2b4cff 100%);
@@ -43,172 +36,60 @@ st.markdown("""
         --text-main: #1f1f1f;
         --text-sub: #5f6368;
     }
-
     .stApp { background-color: var(--bg-color); }
-
-    /* 2. 标题流光效果 */
-    .header-container {
-        text-align: center;
-        padding: 3rem 0 1rem 0;
-    }
+    .header-container { text-align: center; padding: 3rem 0 1rem 0; }
     .main-title {
-        font-size: 4.5rem !important;
-        font-weight: 800;
-        letter-spacing: -2px;
-        margin: 0;
+        font-size: 4.5rem !important; font-weight: 800; letter-spacing: -2px; margin: 0;
         background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
-        background-size: 200% auto;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         animation: shine 5s linear infinite;
     }
     @keyframes shine { to { background-position: 200% center; } }
-    
-    .sub-title {
-        font-size: 1rem;
-        color: var(--text-sub);
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-top: 0.5rem;
-    }
-
-    /* 3. 问候语 */
-    .greeting-text {
-        font-size: 2rem;
-        font-weight: 300;
-        color: var(--text-main);
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-
-    /* 4. 功能选择器 */
+    .sub-title { font-size: 1rem; color: var(--text-sub); letter-spacing: 2px; text-transform: uppercase; margin-top: 0.5rem; }
+    .greeting-text { font-size: 2rem; font-weight: 300; color: var(--text-main); text-align: center; margin-bottom: 2rem; }
     div[role="radiogroup"] > label > div:first-child { display: none !important; }
-    div[role="radiogroup"] {
-        display: flex;
-        justify-content: center;
-        gap: 15px;
-        width: 100%;
-        margin-bottom: 25px;
-    }
+    div[role="radiogroup"] { display: flex; justify-content: center; gap: 15px; width: 100%; margin-bottom: 25px; }
     div[role="radiogroup"] label {
-        background: white;
-        border: 1px solid #e0e0e0;
-        border-radius: 12px;
-        padding: 15px;
-        text-align: center;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
-        cursor: pointer;
-        flex: 1;
-        transition: all 0.3s;
-        min-height: 80px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        color: var(--text-sub);
+        background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px;
+        text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); cursor: pointer; flex: 1;
+        transition: all 0.3s; min-height: 80px; display: flex; align-items: center; justify-content: center;
+        font-weight: 600; color: var(--text-sub);
     }
     div[role="radiogroup"] label[data-checked="true"] {
         border: 2px solid transparent !important;
         background: linear-gradient(white, white) padding-box, var(--btn-gradient) border-box !important;
-        color: var(--deepseek-blue) !important;
-        transform: translateY(-4px);
-        box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
+        color: var(--deepseek-blue) !important; transform: translateY(-4px); box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
     }
-
-    /* 5. 说明框优化 (纯 HTML 左对齐) */
     .info-box {
-        background: #ffffff;
-        border-left: 4px solid var(--deepseek-blue);
-        padding: 20px 25px;
-        border-radius: 0 8px 8px 0;
-        margin-bottom: 25px;
-        color: #4a4a4a;
-        font-size: 1rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-        text-align: left;
-        line-height: 1.8;
+        background: #ffffff; border-left: 4px solid var(--deepseek-blue); padding: 20px 25px;
+        border-radius: 0 8px 8px 0; margin-bottom: 25px; color: #4a4a4a; font-size: 1rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03); text-align: left; line-height: 1.8;
     }
-    .info-title {
-        font-weight: 700;
-        color: #1f1f1f;
-        margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    /* 6. 上传与按钮美化 */
+    .info-title { font-weight: 700; color: #1f1f1f; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
     [data-testid="stFileUploader"] section {
-        border-radius: 12px;
-        background-color: white;
-        border: 2px dashed #dbe0ea;
-        padding: 1.5rem;
+        border-radius: 12px; background-color: white; border: 2px dashed #dbe0ea; padding: 1.5rem;
     }
     [data-testid="stFileUploader"] section:hover { border-color: var(--deepseek-blue); }
-    
     div.stButton > button {
-        width: 100%;
-        height: 60px;
-        border-radius: 12px;
-        font-size: 1.2rem;
-        font-weight: 600;
-        background: var(--btn-gradient);
-        color: white;
-        border: none;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(77, 107, 254, 0.3);
+        width: 100%; height: 60px; border-radius: 12px; font-size: 1.2rem; font-weight: 600;
+        background: var(--btn-gradient); color: white; border: none; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(77, 107, 254, 0.3);
     }
-    div.stButton > button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 8px 25px rgba(77, 107, 254, 0.4);
-        color: white;
-    }
-
+    div.stButton > button:hover { transform: scale(1.02); box-shadow: 0 8px 25px rgba(77, 107, 254, 0.4); color: white; }
     #MainMenu, header, footer { visibility: hidden; }
-            
-    /* 7. [新增] 大区筛选器 (Pills) 专项优化 */
-    [data-testid="stPills"] {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 15px;
-    }
-    
+    [data-testid="stPills"] { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
     [data-testid="stPills"] button {
-        border-radius: 20px !important;
-        border: 1px solid #e0e0e0 !important;
-        background: white !important;
-        color: #5f6368 !important;
-        padding: 6px 20px !important;
-        font-size: 0.95rem !important;
-        transition: all 0.2s ease;
-        min-height: 40px !important;
-        height: auto !important;
+        border-radius: 20px !important; border: 1px solid #e0e0e0 !important; background: white !important;
+        color: #5f6368 !important; padding: 6px 20px !important; font-size: 0.95rem !important;
+        transition: all 0.2s ease; min-height: 40px !important; height: auto !important;
     }
-    
     [data-testid="stPills"] button[aria-selected="true"] {
-        background: var(--btn-gradient) !important;
-        color: white !important;
-        border: none !important;
-        box-shadow: 0 4px 12px rgba(77, 107, 254, 0.3);
-        font-weight: 600 !important;
+        background: var(--btn-gradient) !important; color: white !important; border: none !important;
+        box-shadow: 0 4px 12px rgba(77, 107, 254, 0.3); font-weight: 600 !important;
     }
-    
-    [data-testid="stPills"] button:hover {
-        border-color: var(--deepseek-blue) !important;
-        color: var(--deepseek-blue) !important;
-        transform: translateY(-1px);
-    }
-    [data-testid="stPills"] button[aria-selected="true"]:hover {
-        color: white !important;
-        transform: translateY(-1px);
-    }           
+    [data-testid="stPills"] button:hover { border-color: var(--deepseek-blue) !important; color: var(--deepseek-blue) !important; transform: translateY(-1px); }
+    [data-testid="stPills"] button[aria-selected="true"]:hover { color: white !important; transform: translateY(-1px); }           
 </style>
 """, unsafe_allow_html=True)
-
-# ============================================================================
-# PART 1: 初始保证金处理逻辑
-# ============================================================================
 
 def read_excel_safe(file_stream):
     try:
@@ -228,8 +109,7 @@ def read_excel_safe(file_stream):
             else:
                 raise ValueError("在文件前200行中无法找到包含'合同编号'的标题行，请检查文件格式。")
         return df
-    except Exception as e:
-        raise e
+    except Exception as e: raise e
 
 def fill_original_sheet_columns(ws_original, df_data):
     try:
@@ -237,8 +117,7 @@ def fill_original_sheet_columns(ws_original, df_data):
         col_type = get_column_by_name(ws_original, "逾期原因分类")
         col_client = get_column_by_name(ws_original, "客户")
         left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                             top=Side(style='thin'), bottom=Side(style='thin'))
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         if col_reason and col_type and col_client:
              for i, row_cells in enumerate(ws_original.iter_rows(min_row=2), start=0):
                 if i >= len(df_data): break
@@ -269,8 +148,7 @@ def fill_original_sheet_columns(ws_original, df_data):
                     new_align = copy.copy(cell.alignment)
                     new_align.vertical = 'center'
                     cell.alignment = new_align
-                else:
-                    cell.alignment = Alignment(vertical='center')
+                else: cell.alignment = Alignment(vertical='center')
     except Exception as e: pass
 
 def get_true_column_width(value):
@@ -284,12 +162,7 @@ def get_true_column_width(value):
     return width
 
 def auto_fit_columns(worksheet, min_width=10, max_width=60):
-    custom_widths = {
-        "序号": 6, "业务部门": 14, "合同编号": 28, "客户": 35, "品种": 10,
-        "合同数量": 14, "合同单价": 14, "合同金额": 16, "应收保证金日期": 18,
-        "应收保证金比例": 16, "应收保证金金额": 18, "已收定金/预收款": 18,
-        "逾期初始保证金金额": 22
-    }
+    custom_widths = {"序号": 6, "业务部门": 14, "合同编号": 28, "客户": 35, "品种": 10, "合同数量": 14, "合同单价": 14, "合同金额": 16, "应收保证金日期": 18, "应收保证金比例": 16, "应收保证金金额": 18, "已收定金/预收款": 18, "逾期初始保证金金额": 22}
     for col in worksheet.columns:
         column_letter = get_column_letter(col[0].column)
         header_text = str(col[0].value).strip() if col[0].value else ""
@@ -349,8 +222,7 @@ def get_column_by_name(worksheet, column_names):
     return None
 
 def beautify_sheet_common(ws, title_color="BDD7EE"):
-    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                         top=Side(style='thin'), bottom=Side(style='thin'))
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     header_fill = PatternFill(start_color=title_color, end_color=title_color, fill_type="solid")
     header_font = Font(color="000000", bold=True, size=11)
     light_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
@@ -517,6 +389,7 @@ def create_A_summary_sheet(workbook, ws_A, today_date_str):
             ws_summary.row_dimensions[row].height = row_height
         return True, logs
     except: return False, []
+
 def process_margin_deposit_logic(current_file, prev_file):
     try:
         book = openpyxl.load_workbook(current_file)
@@ -563,10 +436,6 @@ def process_margin_deposit_logic(current_file, prev_file):
     except Exception as e:
         import traceback
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()]
-
-# ============================================================================
-# PART 2: 追加保证金处理逻辑 (ZhuiJIA.py 集成版)
-# ============================================================================
 
 def smart_format_money_zj(value):
     try:
@@ -802,7 +671,8 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-        return report_base + f"。分大区情况如下：\n{region_summary_str}"
+        # ⚠️ 在此处强制另起一行生成“分大区情况如下”
+        return report_base + f"。\n\n分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
 def generate_customer_analysis_report_zj(df_processed, today_display):
@@ -935,7 +805,8 @@ def generate_region_department_report_zj(df_region, today_display, region_name):
         if trigger_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_str}"
-        return report_base + f"。分经营部情况如下：\n{dept_str}"
+        # ⚠️ 在此处强制另起一行生成“分经营部情况如下”
+        return report_base + f"。\n\n分经营部情况如下：\n{dept_str}"
     except: return f"{region_name}大区报告生成失败。"
 
 def generate_region_customer_report_zj(df_region, today_display, region_name):
@@ -1056,11 +927,7 @@ def process_additional_margin_logic(uploaded_file, region_filter):
         import traceback
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", ""
 
-# ==========================================
-# 工具函数：为信用风险生成HTML渲染格式
-# ==========================================
 def format_html_content_for_credit(text):
-    """(信用日报专用) 将纯文本按原有格式美化为 HTML 列表"""
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     list_html = ""
     for line in lines:
@@ -1069,11 +936,6 @@ def format_html_content_for_credit(text):
         else:
              list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #333; line-height: 1.6;'>• {line}</div>"
     return list_html
-
-# ==========================================
-# 主界面逻辑 (恢复了全部旧版提示词内容)
-# ==========================================
-
 def main():
     st.markdown("""
         <div class="header-container">
@@ -1167,29 +1029,30 @@ def main():
                         if output_file:
                             st.success(f"✅ {selected_region}报告生成完成！")
                             
-                            c_a, c_b = st.columns(2)
-                            with c_a:
-                                display_pretty_report(f"业务单位报告 ({selected_region})", report_a, "#eef5ff")
-                            with c_b:
-                                display_pretty_report(f"分客户报告 ({selected_region})", report_b, "#fff8e6")
-                            
+                            # ⚠️ 下载按钮移到了最上方
                             today_mmdd = datetime.now().strftime('%m%d')
                             file_prefix = "" if selected_region == "中粮贸易" else f"{selected_region}"
                             dl_filename = f"{file_prefix}追加保证金填报表{today_mmdd}.xlsx"
-                            
                             st.download_button(
                                 label=f"📥 下载定制报告 ({dl_filename})",
                                 data=output_file,
                                 file_name=dl_filename,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
+                            
+                            c_a, c_b = st.columns(2)
+                            with c_a:
+                                # 首段无需加粗
+                                display_pretty_report(f"业务单位报告 ({selected_region})", report_a, "#eef5ff", bold_first_para=False)
+                            with c_b:
+                                display_pretty_report(f"分客户报告 ({selected_region})", report_b, "#fff8e6", bold_first_para=False)
                         else:
                             st.error("处理失败")
                             for l in logs: st.write(l)
                 else:
                     st.warning("⚠️ 请先上传文件！")
 
-        # --- 模块 3: 逾期销售处理 (新接入) ---
+        # --- 模块 3: 逾期销售处理 ---
         elif mode == "⏱️ 逾期销售处理":
             st.markdown("""
             <div class="info-box">
@@ -1227,21 +1090,14 @@ def main():
                         if excel_io:
                             st.success("✅ 逾期数据处理成功！")
                             
-                            # 展示处理日志
                             with st.expander("查看处理日志", expanded=False):
                                 for log in logs:
                                     st.write(log)
                                     
-                            # 重点展示催收提醒文本，调用美化组件
-                            if collection_text:
-                                st.markdown("### 📢 生成的通报文案")
-                                display_pretty_report("💬 催收提醒预览", collection_text, bg_color="#f8f9fa")
-
-                            # 下载按钮区域
+                            # ⚠️ 下载按钮整体上移至此处
                             st.markdown("### 📥 下载结果文件")
                             dl_col1, dl_col2 = st.columns(2)
                             
-                            # 动态获取 MMDD 日期
                             mmdd_str = datetime.now().strftime('%m%d')
                             yyyymmdd_str = datetime.now().strftime('%Y%m%d')
                             
@@ -1263,9 +1119,13 @@ def main():
                                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                         use_container_width=True
                                     )
+
+                            # 预览文本位于最下方，且通过 bold_first_para=True 强制首段加粗
+                            if collection_text:
+                                st.markdown("### 📢 生成的通报文案")
+                                display_pretty_report("💬 催收提醒预览", collection_text, bg_color="#f8f9fa", bold_first_para=True)
                         else:
                             st.error("❌ 处理失败，请检查文件格式是否符合要求。")
-
 
         # --- 模块 4: 信用风险管理日报 ---
         elif mode == "📊 信用风险管理日报":
