@@ -316,7 +316,7 @@ def generate_collection_reminder(df_unique):
             v_ratio = format_num(v_amt / r_safe_amt * 100, is_percent=True)
             lines.append(f"{i}、{v}{rv_stats.loc[v, '合同编号']}笔，逾期数量{format_qty(rv_stats.loc[v, '逾期数量（万吨）'])}万吨，逾期金额{format_num(v_amt, 0, True)}万元（{v_ratio}）。")
 
-return "\n".join(lines)
+    return "\n".join(lines)
 
 def set_font_mixed(run_or_style, size_pt, bold=False, east_asia='仿宋_GB2312', ascii_font='Times New Roman'):
     run_or_style.font.size = Pt(size_pt)
