@@ -236,7 +236,6 @@ def generate_collection_reminder(df_unique):
     
     regions = df_unique['大区'].dropna().unique() if '大区' in df_unique.columns else []
     
-    # 逻辑 1：如果有两个及以上的大区，或者完全没有大区数据 -> 只生成中粮贸易总体！
     if len(regions) >= 2 or len(regions) == 0:
         lines.append("中粮贸易：")
         tot_cnt = len(df_unique)
@@ -264,9 +263,59 @@ def generate_collection_reminder(df_unique):
             r_stats = df_unique.groupby('大区').agg({'合同编号': 'count', '逾期数量（万吨）': 'sum', '逾期金额（万元）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
             for i, r in enumerate(r_stats.index, 1):
                 lines.append(f"{i}、{r}，逾期销售提货合同合计{r_stats.loc[r, '合同编号']}笔，逾期数量{format_qty(r_stats.loc[r, '逾期数量（万吨）'])}万吨，逾期金额{format_num(r_stats.loc[r, '逾期金额（万元）'], 0, True)}万元。")
-        # ⚠️ 此处彻底屏蔽原先的循环“四大区”明细数据生成
+        
+        lines.append("")
+        lines.append("四大区：")
+        
+        if '大区' in df_unique.columns:
+            for region in r_stats.index:
+                r_df = df_unique[df_unique['大区'] == region]
+                r_cnt = len(r_df)
+                r_qty = r_df['逾期数量（万吨）'].sum()
+                r_amt = r_df['逾期金额（万元）'].sum()
+                r_safe_qty = r_qty if r_qty > 0 else 1e-9
+                r_avg_days_val = (r_df['逾期数量（万吨）'] * r_df['逾期天数']).sum() / r_safe_qty if r_qty > 0 else 0
+                r_avg_days = int(Decimal(str(round(r_avg_days_val, 6))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+                
+                lines.append(f"截至{date_str}，{region}逾期销售提货合同合计{r_cnt}笔，逾期数量{format_qty(r_qty)}万吨，逾期金额{format_num(r_amt, 0, True)}万元，平均逾期{r_avg_days}天。")
+                lines.append("分经营部看：")
+                
+                if '经营部' in r_df.columns:
+                    d_stats = r_df.groupby('经营部').agg({'合同编号': 'count', '逾期数量（万吨）': 'sum', '逾期金额（万元）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
+                    for i, d in enumerate(d_stats.index, 1):
+                        lines.append(f"{i}、{d}，逾期销售提货合同合计{d_stats.loc[d, '合同编号']}笔，逾期数量{format_qty(d_stats.loc[d, '逾期数量（万吨）'])}万吨，逾期金额{format_num(d_stats.loc[d, '逾期金额（万元）'], 0, True)}万元。")
+                        
+                        d_df = r_df[r_df['经营部'] == d].copy()
+                        has_focus = '是否重点关注' in d_df.columns
+                        has_severe = '是否严重逾期' in d_df.columns
+                        
+                        def get_label(row):
+                            if pd.to_numeric(row.get('逾期天数', 0), errors='coerce') >= 60: return "逾期60天以上"
+                            if has_severe and '严重逾期' in str(row.get('是否严重逾期', '')): return "严重逾期"
+                            if has_focus and '重点关注' in str(row.get('是否重点关注', '')): return "重点关注"
+                            return ""
+                        
+                        d_df['特殊标签'] = d_df.apply(get_label, axis=1)
+                        spec_df = d_df[d_df['特殊标签'] != ""]
+                        spec_df = spec_df.sort_values(by='逾期数量（万吨）', ascending=False)
+                        
+                        for _, row in spec_df.iterrows():
+                            c_name = row.get('客户名称', '')
+                            l_tag = row['特殊标签']
+                            s_qty = format_qty(row.get('逾期数量（万吨）', 0))
+                            s_amt = format_num(row.get('逾期金额（万元）', 0), 0, True)
+                            s_days = format_num(row.get('逾期天数', 0), 0, True)
+                            lines.append(f"• {c_name}，{l_tag}，逾期数量{s_qty}万吨，逾期金额{s_amt}万元，逾期{s_days}天。")
+                
+                lines.append("分品种看：")
+                rv_stats = r_df.groupby('品种').agg({'合同编号': 'count', '逾期数量（万吨）': 'sum', '逾期金额（万元）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
+                r_safe_amt = r_amt if r_amt > 0 else 1e-9
+                for i, v in enumerate(rv_stats.index, 1):
+                    v_amt = rv_stats.loc[v, '逾期金额（万元）']
+                    v_ratio = format_num(v_amt / r_safe_amt * 100, is_percent=True)
+                    lines.append(f"{i}、{v}{rv_stats.loc[v, '合同编号']}笔，逾期数量{format_qty(rv_stats.loc[v, '逾期数量（万吨）'])}万吨，逾期金额{format_num(v_amt, 0, True)}万元（{v_ratio}）。")
+                lines.append("")
     
-    # 逻辑 2：如果只有一个大区 -> 屏蔽中粮贸易，只生成这一个大区的！
     elif len(regions) == 1:
         region = regions[0]
         r_df = df_unique[df_unique['大区'] == region]
@@ -279,7 +328,7 @@ def generate_collection_reminder(df_unique):
         
         lines.append(f"{region}：")
         lines.append(f"截至{date_str}，{region}逾期销售提货合同合计{r_cnt}笔，逾期数量{format_qty(r_qty)}万吨，逾期金额{format_num(r_amt, 0, True)}万元，平均逾期{r_avg_days}天。")
-        lines.append("\n分经营部看：")
+        lines.append("分经营部看：")
         
         if '经营部' in r_df.columns:
             d_stats = r_df.groupby('经营部').agg({'合同编号': 'count', '逾期数量（万吨）': 'sum', '逾期金额（万元）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
@@ -308,7 +357,7 @@ def generate_collection_reminder(df_unique):
                     s_days = format_num(row.get('逾期天数', 0), 0, True)
                     lines.append(f"• {c_name}，{l_tag}，逾期数量{s_qty}万吨，逾期金额{s_amt}万元，逾期{s_days}天。")
         
-        lines.append("\n分品种看：")
+        lines.append("分品种看：")
         rv_stats = r_df.groupby('品种').agg({'合同编号': 'count', '逾期数量（万吨）': 'sum', '逾期金额（万元）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
         r_safe_amt = r_amt if r_amt > 0 else 1e-9
         for i, v in enumerate(rv_stats.index, 1):
@@ -316,7 +365,7 @@ def generate_collection_reminder(df_unique):
             v_ratio = format_num(v_amt / r_safe_amt * 100, is_percent=True)
             lines.append(f"{i}、{v}{rv_stats.loc[v, '合同编号']}笔，逾期数量{format_qty(rv_stats.loc[v, '逾期数量（万吨）'])}万吨，逾期金额{format_num(v_amt, 0, True)}万元（{v_ratio}）。")
 
-return "\n".join(lines)
+    return "\n".join(lines)
 
 def set_font_mixed(run_or_style, size_pt, bold=False, east_asia='仿宋_GB2312', ascii_font='Times New Roman'):
     run_or_style.font.size = Pt(size_pt)
