@@ -1007,7 +1007,7 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
     df_final['逾期数量'] = df_final['调整后逾期销售金额'] / df_final['合同单价_safe'] / 10000
     df_final['逾期数量'] = df_final['逾期数量'].fillna(0)
 
-    df_final['合同执行期(天数)'] = (df_final['交货结束日期'] - df_final['交货开始日期']).dt.days
+    df_final['合同执行期(天数)'] = (df_final['交货结束日期'] - df_final['合同签订日期']).dt.days
     df_final['合同执行期(天数)'] = df_final['合同执行期(天数)'].fillna(1).replace(0, 1)
     
     ratio_days = (df_final['逾期天数'] / df_final['合同执行期(天数)']).fillna(0)
