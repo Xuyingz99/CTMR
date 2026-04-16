@@ -1197,7 +1197,7 @@ def main():
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
                     <div>请上传包含【逾期采购监控表-日报】数据的 Excel 文件（支持多选最多 6 个）。</div>
-                    <div style="margin-top: 4px;">系统将自动对齐、合并和清洗数据，并为您生成完整的周报与监控台账。</div>
+                    <div style="margin-top: 4px;">系统将自动对齐、合并和清洗数据，并为您生成对应完整的报告与监控台账。</div>
                     <div style="margin-top: 4px;">网页将直接预览逾期采购情况的总结文本。</div>
                 </div>
             </div>
