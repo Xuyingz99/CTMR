@@ -1,3 +1,4 @@
+# --- app.py 第 1 部分开始 ---
 import streamlit as st
 import pandas as pd
 import io
@@ -15,6 +16,8 @@ from openpyxl.utils import get_column_letter
 from utils.logic_credit import process_credit_report
 from utils.logic_XS import process_overdue_sales
 from utils.style import display_pretty_report 
+# 【此处为本次新增内容】引入逾期采购模块
+from utils.logic_CG import process_overdue_purchase
 
 warnings.filterwarnings('ignore')
 
@@ -91,6 +94,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- app.py 第 2 部分开始（直接接在上一段代码下面） ---
 def read_excel_safe(file_stream):
     try:
         file_stream.seek(0)
@@ -671,7 +675,6 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-        # ⚠️ 在此处强制另起一行生成“分大区情况如下”
         return report_base + f"。\n\n分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
@@ -805,7 +808,6 @@ def generate_region_department_report_zj(df_region, today_display, region_name):
         if trigger_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_str}"
-        # ⚠️ 在此处强制另起一行生成“分经营部情况如下”
         return report_base + f"。\n\n分经营部情况如下：\n{dept_str}"
     except: return f"{region_name}大区报告生成失败。"
 
@@ -936,16 +938,15 @@ def format_html_content_for_credit(text):
         else:
              list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #333; line-height: 1.6;'>• {line}</div>"
     return list_html
+
 # ==========================================
 # 主界面逻辑
 # ==========================================
 
 def main():
-    # --- 1. 顶部安全布局：左侧留白，中间标题，右侧齿轮 ---
     col_l, col_center, col_admin = st.columns([1, 6, 1])
     
     with col_center:
-        # 标题正常居中，去除了会导致遮挡的负边距
         st.markdown("""
             <div class="header-container" style="padding-bottom: 0rem; padding-top: 1rem;">
                 <h1 class="main-title">Take It Easy</h1>
@@ -954,7 +955,6 @@ def main():
         """, unsafe_allow_html=True)
 
     with col_admin:
-        # 给齿轮加一点点向下的空间，让它和标题对齐更自然
         st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
         with st.expander("⚙️ Admin", expanded=False):
             pwd = st.text_input("Admin", type="password", placeholder="通行证", label_visibility="collapsed")
@@ -962,7 +962,6 @@ def main():
             if pwd == "xuyingzhe":
                 st.success("已授权")
                 
-                # 📌 详细的表单上传规范提示
                 st.markdown("""
                     <div style="font-size: 0.75rem; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px; line-height: 1.5; border: 1px solid #e0e0e0;">
                         <b>📌 上传规范说明：</b><br>
@@ -978,7 +977,6 @@ def main():
                     if st.button("☁️ 云端同步", use_container_width=True):
                         with st.spinner("校验并同步中..."):
                             try:
-                                # 本地防御性校验 (防呆设计)
                                 df_total = pd.read_excel(new_mapping_file, sheet_name='总')
                                 df_internal = pd.read_excel(new_mapping_file, sheet_name='内部')
                                 if '客户名称' not in df_total.columns or '客户所属集团' not in df_total.columns:
@@ -986,7 +984,6 @@ def main():
                                 elif '客户名称' not in df_internal.columns or '所属专业化公司' not in df_internal.columns:
                                     st.error("❌ 拦截：【内部】表缺少关键列！")
                                 else:
-                                    # 调用 PyGithub 进行云端推送
                                     from github import Github
                                     gh_token = st.secrets["GITHUB_TOKEN"]
                                     g = Github(gh_token)
@@ -1008,7 +1005,6 @@ def main():
             elif pwd != "":
                 st.error("密码错误")
 
-    # --- 2. 下方核心主界面布局 ---
     col_space_l, col_center_main, col_space_r = st.columns([1, 6, 1])
 
     with col_center_main:
@@ -1018,6 +1014,7 @@ def main():
             "📈 初始保证金处理": "init_margin",
             "📉 追加保证金处理": "add_margin",
             "⏱️ 逾期销售处理": "overdue_sales",
+            "🛒 逾期采购处理": "overdue_purchase", # 【此处为本次新增菜单项】
             "📊 信用风险管理日报": "credit_report"
         }
 
@@ -1050,7 +1047,6 @@ def main():
                         if excel_data:
                             st.success("✅ 处理完成！")
                             
-                            # ===== 修改点：自定义下载文件名，去除前导零 =====
                             today_dt = datetime.now()
                             custom_filename = f"{today_dt.month}.{today_dt.day}(未收保证金情况表)--沿海大区.xlsx"
                             
@@ -1100,7 +1096,6 @@ def main():
                         if output_file:
                             st.success(f"✅ {selected_region}报告生成完成！")
                             
-                            # ⚠️ 下载按钮移到了最上方
                             today_mmdd = datetime.now().strftime('%m%d')
                             file_prefix = "" if selected_region == "中粮贸易" else f"{selected_region}"
                             dl_filename = f"{file_prefix}追加保证金填报表{today_mmdd}.xlsx"
@@ -1113,7 +1108,6 @@ def main():
                             
                             c_a, c_b = st.columns(2)
                             with c_a:
-                                # 首段无需加粗
                                 display_pretty_report(f"业务单位报告 ({selected_region})", report_a, "#eef5ff", bold_first_para=False)
                             with c_b:
                                 display_pretty_report(f"分客户报告 ({selected_region})", report_b, "#fff8e6", bold_first_para=False)
@@ -1165,7 +1159,6 @@ def main():
                                 for log in logs:
                                     st.write(log)
                                     
-                            # ⚠️ 下载按钮整体上移至此处
                             st.markdown("### 📥 下载结果文件")
                             dl_col1, dl_col2 = st.columns(2)
                             
@@ -1191,14 +1184,79 @@ def main():
                                         use_container_width=True
                                     )
 
-                            # 预览文本位于最下方，且通过 bold_first_para=True 强制首段加粗
                             if collection_text:
                                 st.markdown("### 📢 生成的通报文案")
                                 display_pretty_report("💬 催收提醒预览", collection_text, bg_color="#f8f9fa", bold_first_para=True)
                         else:
                             st.error("❌ 处理失败，请检查文件格式是否符合要求。")
 
-        # --- 模块 4: 信用风险管理日报 ---
+        # --- 模块 4: 逾期采购处理 【本次新增的核心逻辑块】 ---
+        elif mode == "🛒 逾期采购处理":
+            st.markdown("""
+            <div class="info-box">
+                <div class="info-title">⚠️ 注意事项</div>
+                <div style="margin-left: 2px;">
+                    <div>请上传包含【逾期采购监控表-日报】数据的 Excel 文件（支持多选最多 6 个）。</div>
+                    <div style="margin-top: 4px;">系统将自动对齐、合并和清洗数据，并为您生成完整的周报与台账。</div>
+                    <div style="margin-top: 4px;">网页将直接预览逾期采购情况的总结文本。</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            cg_files = st.file_uploader("📂 上传【逾期采购数据】 [最多6个]", type=["xlsx", "xls"], accept_multiple_files=True, key="cg_upload")
+            
+            if cg_files and len(cg_files) > 6:
+                st.warning("⚠️ 最多只能上传6个文件，超出的部分将被忽略。")
+                cg_files = cg_files[:6]
+                
+            if st.button("🚀 开始处理逾期采购数据", key="btn_cg"):
+                if not cg_files:
+                    st.warning("⚠️ 请先上传数据文件！")
+                else:
+                    with st.spinner("🤖 正在智能比对与合并多表，生成极速简报中..."):
+                        excel_io, doc_io, web_text, logs = process_overdue_purchase(cg_files)
+                        
+                        if excel_io:
+                            st.success("✅ 逾期采购数据清洗成功，报表已生成！")
+                            
+                            # 展示日志（屏蔽掉纯提示性标志，以防重复）
+                            for log in logs:
+                                if log.startswith("✅"): continue
+                                st.write(log)
+                                
+                            st.markdown("### 📥 下载专属文件")
+                            dl_col1, dl_col2 = st.columns(2)
+                            
+                            mmdd_str = datetime.now().strftime('%m%d')
+                            
+                            with dl_col1:
+                                st.download_button(
+                                    label="📊 下载【逾期采购台账】 (Excel)",
+                                    data=excel_io,
+                                    file_name=f"逾期采购监控表Z_{mmdd_str}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True
+                                )
+                                
+                            if doc_io:
+                                with dl_col2:
+                                    st.download_button(
+                                        label="📝 下载【逾期采购报告】 (Word)",
+                                        data=doc_io,
+                                        file_name=f"逾期采购报告_{mmdd_str}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        use_container_width=True
+                                    )
+                                    
+                            # 渲染展示在网页端的纯文本报告摘要，复用 style.py 内置的美化函数
+                            if web_text:
+                                st.markdown("### 📢 采购情况通报（供复制发送）")
+                                display_pretty_report("💬 逾期采购情况摘要", web_text, bg_color="#fff8e6", bold_first_para=True)
+                        else:
+                            st.error("❌ 处理失败。")
+                            for log in logs: st.write(log)
+
+        # --- 模块 5: 信用风险管理日报 ---
         elif mode == "📊 信用风险管理日报":
             st.markdown("""
             <div class="info-box">
