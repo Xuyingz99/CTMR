@@ -1197,7 +1197,7 @@ def main():
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
                     <div>请上传包含【逾期采购监控表-日报】数据的 Excel 文件（支持多选最多 6 个）。</div>
-                    <div style="margin-top: 4px;">系统将自动对齐、合并和清洗数据，并为您生成完整的周报与台账。</div>
+                    <div style="margin-top: 4px;">系统将自动对齐、合并和清洗数据，并为您生成完整的周报与监控台账。</div>
                     <div style="margin-top: 4px;">网页将直接预览逾期采购情况的总结文本。</div>
                 </div>
             </div>
@@ -1231,7 +1231,7 @@ def main():
                             
                             with dl_col1:
                                 st.download_button(
-                                    label="📊 下载【逾期采购台账】 (Excel)",
+                                    label="📊 下载【逾期采购监控表】 (Excel)",
                                     data=excel_io,
                                     file_name=f"逾期采购监控表Z_{mmdd_str}.xlsx",
                                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1250,7 +1250,7 @@ def main():
                                     
                             # 渲染展示在网页端的纯文本报告摘要，复用 style.py 内置的美化函数
                             if web_text:
-                                st.markdown("### 📢 采购情况通报（供复制发送）")
+                                st.markdown("### 📢 采购情况通报")
                                 display_pretty_report("💬 逾期采购情况摘要", web_text, bg_color="#fff8e6", bold_first_para=True)
                         else:
                             st.error("❌ 处理失败。")
