@@ -941,11 +941,22 @@ def format_html_content_for_credit(text):
 # ==========================================
 
 def main():
-    # --- 1. 顶部极简管理员隐藏入口 (挤在真正的右上角) ---
-    col_space, col_admin = st.columns([15, 1]) 
+    # --- 1. 顶部安全布局：左侧留白，中间标题，右侧齿轮 ---
+    col_l, col_center, col_admin = st.columns([1, 6, 1])
     
+    with col_center:
+        # 标题正常居中，去除了会导致遮挡的负边距
+        st.markdown("""
+            <div class="header-container" style="padding-bottom: 0rem; padding-top: 1rem;">
+                <h1 class="main-title">Take It Easy</h1>
+                <div class="sub-title">Crafted by Xuyingzhe</div>
+            </div>
+        """, unsafe_allow_html=True)
+
     with col_admin:
-        with st.expander("⚙️", expanded=False):
+        # 给齿轮加一点点向下的空间，让它和标题对齐更自然
+        st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+        with st.expander("⚙️ Admin", expanded=False):
             pwd = st.text_input("Admin", type="password", placeholder="通行证", label_visibility="collapsed")
             
             if pwd == "xuyingzhe":
@@ -997,18 +1008,10 @@ def main():
             elif pwd != "":
                 st.error("密码错误")
 
-    # --- 2. 居中的主标题 (利用负边距抵消上方按钮的空间，恢复绝对居中) ---
-    st.markdown("""
-        <div class="header-container" style="padding-bottom: 0rem; margin-top: -60px;">
-            <h1 class="main-title">Take It Easy</h1>
-            <div class="sub-title">Crafted by Xuyingzhe</div>
-        </div>
-    """, unsafe_allow_html=True)
+    # --- 2. 下方核心主界面布局 ---
+    col_space_l, col_center_main, col_space_r = st.columns([1, 6, 1])
 
-    # --- 3. 核心主界面布局 ---
-    col_space_l, col_center, col_space_r = st.columns([1, 6, 1])
-
-    with col_center:
+    with col_center_main:
         st.markdown('<div class="greeting-text">您好，有什么可以帮到你？</div>', unsafe_allow_html=True)
 
         function_map = {
