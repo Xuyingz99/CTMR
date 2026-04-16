@@ -958,7 +958,7 @@ def main():
 
         mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
         
-        # --- 模块 1: 初始保证金处理 ---
+      # --- 模块 1: 初始保证金处理 ---
         if mode == "📈 初始保证金处理":
             st.markdown("""
             <div class="info-box">
@@ -984,22 +984,25 @@ def main():
                         
                         if excel_data:
                             st.success("✅ 处理完成！")
-                            st.markdown("### 📢 生成的通报文案")
-                            for log in report_logs:
-                                st.info(log)
-                                
+                            
+                            # ⚠️ 下载按钮前置：移动到了成功提示下方，通报文案上方
                             st.download_button(
                                 label=f"📥 下载处理后的报表 ({current_file.name})",
                                 data=excel_data,
                                 file_name=current_file.name,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
+                            
+                            st.markdown("### 📢 生成的通报文案")
+                            for log in report_logs:
+                                st.info(log)
+                                
                         else:
                             st.error("处理失败，请查看下方错误日志")
                             st.code(report_logs[-1])
                 else:
                     st.warning("⚠️ 请确保两个文件都已上传！")
-        
+                    
         # --- 模块 2: 追加保证金处理 ---
         elif mode == "📉 追加保证金处理":
             st.markdown("""
