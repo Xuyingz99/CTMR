@@ -941,39 +941,41 @@ def format_html_content_for_credit(text):
 # ==========================================
 
 def main():
-    # --- 顶部布局：将管理员入口优雅地推向右上角 ---
-    col_l, col_title, col_admin = st.columns([2, 5, 3])
+    # --- 1. 顶部极简管理员隐藏入口 (挤在真正的右上角) ---
+    col_space, col_admin = st.columns([15, 1]) 
     
-    with col_title:
-        st.markdown("""
-            <div class="header-container" style="padding-bottom: 0rem;">
-                <h1 class="main-title">Take It Easy</h1>
-                <div class="sub-title">Crafted by Xuyingzhe</div>
-            </div>
-        """, unsafe_allow_html=True)
-
     with col_admin:
-        st.markdown("<div style='margin-top: 35px;'></div>", unsafe_allow_html=True)
-        with st.expander("⚙️ 管理员控制台 (Admin)"):
-            st.markdown("<div style='font-size:0.85rem; color:#666; margin-bottom:10px;'>提示：仅限授权人员更新底层【客户关系】数据字典</div>", unsafe_allow_html=True)
-            pwd = st.text_input("🔑 请输入通行证", type="password")
+        with st.expander("⚙️", expanded=False):
+            pwd = st.text_input("Admin", type="password", placeholder="通行证", label_visibility="collapsed")
             
             if pwd == "xuyingzhe":
-                st.success("✅ 身份验证通过")
-                new_mapping_file = st.file_uploader("📂 上传最新【客户关系清单】", type=['xlsx'])
+                st.success("已授权")
+                
+                # 📌 详细的表单上传规范提示
+                st.markdown("""
+                    <div style="font-size: 0.75rem; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px; line-height: 1.5; border: 1px solid #e0e0e0;">
+                        <b>📌 上传规范说明：</b><br>
+                        1. <b>文件名称</b>：必须包含 <span style='color:#c9302c'>客户关系清单</span><br>
+                        2. <b>表单名称</b>：必须有 <span style='color:#4d6bfe'>总</span>、<span style='color:#4d6bfe'>内部</span> 两个Sheet<br>
+                        3. <b>[总]</b> 列名需含：客户名称、客户所属集团<br>
+                        4. <b>[内部]</b> 列名需含：客户名称、所属专业化公司
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                new_mapping_file = st.file_uploader("上传清单", type=['xlsx'], label_visibility="collapsed")
                 if new_mapping_file:
-                    if st.button("☁️ 立即同步至云端仓库", use_container_width=True):
-                        with st.spinner("正在严格校验表单并进行热更新..."):
+                    if st.button("☁️ 云端同步", use_container_width=True):
+                        with st.spinner("校验并同步中..."):
                             try:
-                                # 1. 本地防御性校验 (防呆设计)
+                                # 本地防御性校验 (防呆设计)
                                 df_total = pd.read_excel(new_mapping_file, sheet_name='总')
                                 df_internal = pd.read_excel(new_mapping_file, sheet_name='内部')
                                 if '客户名称' not in df_total.columns or '客户所属集团' not in df_total.columns:
-                                    st.error("❌ 校验拦截：【总】表缺少『客户名称』或『客户所属集团』列！")
+                                    st.error("❌ 拦截：【总】表缺少关键列！")
                                 elif '客户名称' not in df_internal.columns or '所属专业化公司' not in df_internal.columns:
-                                    st.error("❌ 校验拦截：【内部】表缺少『客户名称』或『所属专业化公司』列！")
+                                    st.error("❌ 拦截：【内部】表缺少关键列！")
                                 else:
-                                    # 2. 调用 PyGithub 进行云端推送
+                                    # 调用 PyGithub 进行云端推送
                                     from github import Github
                                     gh_token = st.secrets["GITHUB_TOKEN"]
                                     g = Github(gh_token)
@@ -984,20 +986,26 @@ def main():
                                     
                                     file_path = "客户关系清单.xlsx"
                                     try:
-                                        # 获取旧文件 sha 并静默覆盖
                                         contents = repo.get_contents(file_path)
                                         repo.update_file(contents.path, "Admin: 网页端在线热更新客户关系清单", content_bytes, contents.sha)
                                     except Exception:
-                                        # 如果云端由于意外没有旧文件，则新建
                                         repo.create_file(file_path, "Admin: 网页端创建客户关系清单", content_bytes)
                                         
-                                    st.success("🎉 云端数据库更新成功！Streamlit 检测到代码变更，将在几秒内自动刷新网页应用新数据。")
+                                    st.success("🎉 云端更新成功！网页即将刷新。")
                             except Exception as e:
-                                st.error(f"❌ 更新发生异常，请检查文件格式或重试: {str(e)}")
+                                st.error(f"❌ 更新失败: {str(e)}")
             elif pwd != "":
-                st.error("❌ 通行证错误，权限拒绝！")
+                st.error("密码错误")
 
-    # --- 核心主界面布局 ---
+    # --- 2. 居中的主标题 (利用负边距抵消上方按钮的空间，恢复绝对居中) ---
+    st.markdown("""
+        <div class="header-container" style="padding-bottom: 0rem; margin-top: -60px;">
+            <h1 class="main-title">Take It Easy</h1>
+            <div class="sub-title">Crafted by Xuyingzhe</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --- 3. 核心主界面布局 ---
     col_space_l, col_center, col_space_r = st.columns([1, 6, 1])
 
     with col_center:
