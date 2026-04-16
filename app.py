@@ -958,7 +958,7 @@ def main():
 
         mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
         
-      # --- 模块 1: 初始保证金处理 ---
+     # --- 模块 1: 初始保证金处理 ---
         if mode == "📈 初始保证金处理":
             st.markdown("""
             <div class="info-box">
@@ -985,11 +985,14 @@ def main():
                         if excel_data:
                             st.success("✅ 处理完成！")
                             
-                            # ⚠️ 下载按钮前置：移动到了成功提示下方，通报文案上方
+                            # ===== 修改点：自定义下载文件名，去除前导零 =====
+                            today_dt = datetime.now()
+                            custom_filename = f"{today_dt.month}.{today_dt.day}(未收保证金情况表)--沿海大区.xlsx"
+                            
                             st.download_button(
-                                label=f"📥 下载处理后的报表 ({current_file.name})",
+                                label=f"📥 下载处理后的报表 ({custom_filename})",
                                 data=excel_data,
-                                file_name=current_file.name,
+                                file_name=custom_filename,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
                             
