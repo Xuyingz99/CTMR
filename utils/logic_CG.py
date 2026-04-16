@@ -514,19 +514,23 @@ def generate_weekly_report(df):
             supplier_qty_str = format_qty(total_supplier_ton / 10000)
             summary_text = f"，{contract_count}笔{'、'.join(variety_list)}采购合同，最长逾期{max_overdue_days}天，逾期数量{supplier_qty_str}万吨，逾期金额{total_supplier_amount:.0f}万元"
             
-            web_summary_text = f"{idx+1}、{supplier_name}，{contract_count}笔{'、'.join(variety_list)}采购合同，最长逾期{max_overdue_days}天，逾期数量{supplier_qty_str}万吨，逾期金额{total_supplier_amount:.0f}万元"
+            # --- 优化点：网页端颜色加深与加粗 ---
+            web_supplier_part = f"<span style='color: #333;'><span style='font-weight: bold;'>{supplier_name}</span>，{contract_count}笔{'、'.join(variety_list)}采购合同，最长逾期{max_overdue_days}天，逾期数量{supplier_qty_str}万吨，逾期金额{total_supplier_amount:.0f}万元"
             
             if all_no_risk:
                 supplier_para.add_run(summary_text + "，")
                 run_margin_txt = supplier_para.add_run("已收保证金能覆盖潜在涨幅损失。")
                 run_margin_txt.bold = True
                 run_margin_txt.font.color.rgb = RGBColor(255, 0, 0)
-                web_summary_text += "，已收保证金能覆盖潜在涨幅损失。"
+                web_supplier_part += "，已收保证金能覆盖潜在涨幅损失。"
             else:
                 supplier_para.add_run(summary_text + "。")
-                web_summary_text += "。"
-                
-            web_text_lines.append(web_summary_text)
+                web_supplier_part += "。"
+            
+            web_supplier_part += "</span>"
+            web_summary_text = f"{idx+1}、{web_supplier_part}"
+            
+            current_web_lines = []
 
             for c_idx, contract_row in supplier_df.iterrows():
                 if contract_count == 1:
@@ -534,10 +538,14 @@ def generate_weekly_report(df):
                     if contract_row["当前市场价格（元）"] > 0:
                         detail_text += f"现货价{contract_row['当前市场价格（元）']:.0f}元/吨。"
                     supplier_para.add_run(detail_text)
-                    web_text_lines.append("  " + detail_text)
+                    
+                    # --- 优化点：单笔合同时，原因直接连在后面不换行 ---
+                    web_summary_text += detail_text
                 else:
                     contract_para = doc.add_paragraph(style='NormalContent')
-                    contract_para.add_run(f"{c_idx+1}、")
+                    
+                    # --- 优化点：多合同时，将编号改为（1）、（2）... ---
+                    contract_para.add_run(f"（{c_idx+1}）")
                     run_cno = contract_para.add_run(f"{contract_row['合同编号']}")
                     run_cno.bold = True
                     run_cno.font.name = u'仿宋_GB2312'
@@ -550,11 +558,14 @@ def generate_weekly_report(df):
                     cvar = contract_row['品种']
                     
                     detail_text = f"：{cvar}采购合同，逾期{cdays}天，逾期数量{cqty_str}万吨，逾期金额{camt:.0f}万元。{contract_row['逾期原因']}。"
-                    web_detail_text = f"  {c_idx+1}、{contract_row['合同编号']}：{cvar}采购合同，逾期{cdays}天，逾期数量{cqty_str}万吨，逾期金额{camt:.0f}万元。{contract_row['逾期原因']}。"
+                    
+                    # 网页端特定排版，加几个空格让子合同有一点点缩进效果
+                    web_detail_text = f"&nbsp;&nbsp;&nbsp;&nbsp;（{c_idx+1}）{contract_row['合同编号']}：{cvar}采购合同，逾期{cdays}天，逾期数量{cqty_str}万吨，逾期金额{camt:.0f}万元。{contract_row['逾期原因']}。"
                     
                     if contract_row["当前市场价格（元）"] > 0:
                         detail_text += f"现货价{contract_row['当前市场价格（元）']:.0f}元/吨。"
                         web_detail_text += f"现货价{contract_row['当前市场价格（元）']:.0f}元/吨。"
+                    
                     contract_para.add_run(detail_text)
                 
                     if not all_no_risk and not contract_row['has_risk']:
@@ -563,7 +574,10 @@ def generate_weekly_report(df):
                         run_c_margin.font.color.rgb = RGBColor(255, 0, 0)
                         web_detail_text += "已收保证金能覆盖潜在涨幅损失。"
                         
-                    web_text_lines.append(web_detail_text)
+                    current_web_lines.append(web_detail_text)
+            
+            web_text_lines.append(web_summary_text)
+            web_text_lines.extend(current_web_lines)
 
         doc.add_paragraph("逾期采购供应商情况表", style='TableTitle')
 
