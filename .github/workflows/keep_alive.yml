@@ -1,0 +1,16 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # 定时任务：0 代表每小时的第 0 分钟执行，即每 1 小时执行一次
+    - cron: "0 * * * *"
+  # 允许手动随时在 GitHub 后台点击运行
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit App
+        # 这里已经替换为你真实的网站地址
+        run: curl -sL https://ctmr2026.streamlit.app > /dev/null
