@@ -1,4 +1,3 @@
-# --- app.py 第 1 部分开始 ---
 import streamlit as st
 import pandas as pd
 import io
@@ -16,7 +15,7 @@ from openpyxl.utils import get_column_letter
 from utils.logic_credit import process_credit_report
 from utils.logic_XS import process_overdue_sales
 from utils.style import display_pretty_report 
-# 【此处为本次新增内容】引入逾期采购模块
+# 引入逾期采购模块
 from utils.logic_CG import process_overdue_purchase
 
 warnings.filterwarnings('ignore')
@@ -94,7 +93,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- app.py 第 2 部分开始（直接接在上一段代码下面） ---
 def read_excel_safe(file_stream):
     try:
         file_stream.seek(0)
@@ -1008,7 +1006,7 @@ def main():
     col_space_l, col_center_main, col_space_r = st.columns([1, 6, 1])
 
     with col_center_main:
-        st.markdown('<div class="greeting-text">您好，有什么可以帮到你？</div>', unsafe_allow_html=True)
+        st.markdown('<div class="greeting-text">有什么我能帮你的么？</div>', unsafe_allow_html=True)
 
         function_map = {
             "📈 初始保证金处理": "init_margin",
