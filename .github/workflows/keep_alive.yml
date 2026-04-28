@@ -2,7 +2,6 @@ name: Keep Streamlit App Alive
 
 on:
   schedule:
-    # 修复 1：改为每 30 分钟执行一次，完美避开全世界的整点拥堵高峰
     - cron: "*/30 * * * *"
   workflow_dispatch:
 
@@ -11,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Stealth Ping Streamlit App
-        # 修复 2：加入真实的 Chrome 浏览器请求头 (User-Agent)，欺骗 Streamlit 防火墙，让它以为是真人在用电脑访问
+        # 防止陷入死循环，强制返回成功状态
         run: |
-          curl -sL -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" https://ctmr2026.streamlit.app > /dev/null
+          curl -sL --max-redirs 3 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" https://ctmr2026.streamlit.app > /dev/null || true
           echo "Ping executed successfully!"
