@@ -320,6 +320,135 @@ def create_A_summary_sheet(workbook, ws_A, today_date_str):
         return True, logs
     except: return False, []
 
+def create_long_term_overdue_sheet(workbook, df_today):
+    try:
+        sheet_name = "长期未处理合同明细"
+        if sheet_name in workbook.sheetnames:
+            del workbook[sheet_name]
+
+        today = pd.Timestamp(datetime.now().date())
+        if "应收保证金日期" not in df_today.columns:
+            return False, ""
+            
+        dates = pd.to_datetime(df_today["应收保证金日期"], errors='coerce')
+        days_diff = (today - dates).dt.days
+
+        reason_col = "逾期原因分类_新"
+        if reason_col not in df_today.columns:
+            return False, ""
+
+        cond_be = df_today[reason_col].astype(str).str.contains(r'(B|款已到未认领|认领为货款|E|拟终止|作废合同)', regex=True, na=False)
+        mask_be = cond_be & (days_diff >= 180)
+
+        cond_c = df_today[reason_col].astype(str).str.contains(r'(C|无需收取保证金)', regex=True, na=False)
+        mask_c = cond_c & (days_diff >= 365)
+
+        df_target = df_today[mask_be | mask_c].copy()
+
+        if df_target.empty:
+            ws_long = workbook.create_sheet(sheet_name)
+            ws_long.append(["业务部门", "合同编号", "客户", "品种", "应收保证金日期", "逾期初始保证金金额", "逾期具体原因", "逾期原因分类"])
+            beautify_sheet_common(ws_long, title_color="F8CBAD")
+            return True, ""
+
+        cols_needed = ["业务部门", "合同编号", "客户", "品种", "应收保证金日期", "逾期初始保证金金额", "逾期具体原因_新", "逾期原因分类_新"]
+        avail_cols = [c for c in cols_needed if c in df_target.columns]
+        df_target = df_target[avail_cols]
+        df_target.rename(columns={"逾期具体原因_新": "逾期具体原因", "逾期原因分类_新": "逾期原因分类"}, inplace=True)
+
+        if "业务部门" in df_target.columns:
+            replacements = ['沿海深圳', '食品原料部', '经营部', '中粮贸易（深圳）有限公司-', '（旧）']
+            for r in replacements:
+                df_target["业务部门"] = df_target["业务部门"].astype(str).str.replace(r, '', regex=False)
+
+        def sort_reason(x):
+            val = str(x).upper()
+            if 'B' in val or '款已到未认领' in val or '认领为货款' in val: return 1
+            if 'E' in val or '拟终止' in val or '作废合同' in val: return 2
+            if 'C' in val or '无需收取' in val: return 3
+            return 4
+
+        df_target['reason_sort'] = df_target['逾期原因分类'].apply(sort_reason)
+
+        if "应收保证金日期" in df_target.columns:
+            df_target["应收保证金日期_dt"] = pd.to_datetime(df_target["应收保证金日期"], errors='coerce')
+        else:
+            df_target["应收保证金日期_dt"] = pd.NaT
+
+        if "逾期初始保证金金额" in df_target.columns:
+            df_target["逾期初始保证金金额_num"] = pd.to_numeric(df_target["逾期初始保证金金额"], errors='coerce').fillna(0)
+        else:
+            df_target["逾期初始保证金金额_num"] = 0
+
+        df_target = df_target.sort_values(
+            by=['reason_sort', '逾期初始保证金金额_num', '应收保证金日期_dt'],
+            ascending=[True, False, True]
+        )
+
+        log_lines = []
+        for _, row in df_target.iterrows():
+            dept = str(row.get("业务部门", "")).strip()
+            contract = str(row.get("合同编号", "")).strip()
+            client = str(row.get("客户", "")).strip()
+            reason = str(row.get("逾期具体原因", "")).strip()
+            amt = row.get("逾期初始保证金金额_num", 0)
+            d = row.get("应收保证金日期_dt", pd.NaT)
+
+            if pd.isna(d):
+                date_str = ""
+            else:
+                date_str = f"应收日期{d.year}年{d.month}月{d.day}日"
+
+            if abs(amt) < 0.005: 
+                log_line = f"{dept}，{contract}，{client}。{reason}"
+            else:
+                log_line = f"{dept}，{contract}，{client}，{date_str}，应收金额{amt:.2f}万元。{reason}"
+            log_lines.append(log_line)
+
+        html_log = ""
+        if log_lines:
+            html_log = '<div style="background-color: #FFF3E0; padding: 15px; border-radius: 8px; border-left: 5px solid #FF9800; margin-top: 15px; margin-bottom: 15px;">'
+            html_log += '<h4 style="color: #E65100; margin-top: 0; margin-bottom: 10px;">⏳ 长期未处理合同明细提醒</h4>'
+            for line in log_lines:
+                html_log += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{line}</p>'
+            html_log += '</div>'
+
+        if "应收保证金日期" in df_target.columns:
+            df_target["应收保证金日期"] = df_target["应收保证金日期_dt"].dt.strftime('%Y-%m-%d')
+
+        df_target.drop(columns=['reason_sort', '应收保证金日期_dt', '逾期初始保证金金额_num'], inplace=True, errors='ignore')
+
+        ws_long = workbook.create_sheet(sheet_name)
+        for r in dataframe_to_rows(df_target, index=False, header=True):
+            ws_long.append(r)
+
+        beautify_sheet_common(ws_long, title_color="F8CBAD")
+        auto_fit_columns(ws_long)
+
+        left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        right_align = Alignment(horizontal='right', vertical='center', wrap_text=True)
+        for row in range(2, ws_long.max_row + 1):
+            ws_long.row_dimensions[row].height = 24.5
+        for col in range(1, ws_long.max_column + 1):
+            header_val = str(ws_long.cell(row=1, column=col).value or "")
+            if "金额" in header_val or "日期" in header_val:
+                for row in range(2, ws_long.max_row + 1):
+                    ws_long.cell(row=row, column=col).alignment = right_align
+                    if "金额" in header_val:
+                        try:
+                            if ws_long.cell(row=row, column=col).value:
+                                ws_long.cell(row=row, column=col).value = float(ws_long.cell(row=row, column=col).value)
+                                ws_long.cell(row=row, column=col).number_format = '0.00'
+                        except: pass
+            elif "原因" in header_val or "分类" in header_val or "客户" in header_val:
+                for row in range(2, ws_long.max_row + 1):
+                    ws_long.cell(row=row, column=col).alignment = left_align
+
+        return True, html_log
+
+    except Exception as e:
+        return False, f"<div style='color:red;'>生成长期未处理明细出错: {str(e)}</div>"
+
 def process_margin_deposit_logic(current_file, prev_file):
     try:
         book = openpyxl.load_workbook(current_file)
@@ -346,7 +475,7 @@ def process_margin_deposit_logic(current_file, prev_file):
                 df_today.loc[mask_empty & (df_today[clause_col] == "否"), ["逾期具体原因_新", "逾期原因分类_新"]] = ["合同未约定收取保证金", "C无需收取保证金：指政策性业务、对养殖户销售业务、分合同、公司批准免收保证金客户的。此类要写明不收取保证金的具体原因。"]
         temp_stream.seek(0)
         book = openpyxl.load_workbook(temp_stream)
-        for s in ["WSBZJQKB_Processed", "A类逾期明细", "A类逾期明细汇总"]:
+        for s in ["WSBZJQKB_Processed", "A类逾期明细", "A类逾期明细汇总", "长期未处理合同明细"]:
             if s in book.sheetnames: del book[s]
         ws_proc = book.create_sheet("WSBZJQKB_Processed")
         for r in dataframe_to_rows(df_today, index=False, header=True): ws_proc.append(r)
@@ -355,10 +484,23 @@ def process_margin_deposit_logic(current_file, prev_file):
         for r in dataframe_to_rows(df_A, index=False, header=True): ws_A.append(r)
         clean_and_organize_A_sheet(ws_A)
         optimize_A_sheet_formatting(ws_A)
+        
+        success_long, log_long = create_long_term_overdue_sheet(book, df_today)
+        
         today_str = datetime.now().strftime("%Y.%m.%d")
         success, logs = create_A_summary_sheet(book, ws_A, today_str)
+        
+        if log_long:
+            logs.append(log_long)
+            
         if "WSBZJQKB" in book.sheetnames: fill_original_sheet_columns(book["WSBZJQKB"], df_today)
         if "WSBZJQKB_Processed" in book.sheetnames: del book["WSBZJQKB_Processed"]
+        
+        if "A类逾期明细" in book.sheetnames:
+            idx = book.sheetnames.index("A类逾期明细")
+            if idx != 0:
+                book.move_sheet("A类逾期明细", offset=-idx)
+                
         output = io.BytesIO()
         book.save(output)
         output.seek(0)
