@@ -338,10 +338,10 @@ def create_long_term_overdue_sheet(workbook, df_today):
             return False, ""
 
         cond_be = df_today[reason_col].astype(str).str.contains(r'(B|款已到未认领|认领为货款|E|拟终止|作废合同)', regex=True, na=False)
-        mask_be = cond_be & (days_diff >= 180)
+        mask_be = cond_be & (days_diff >= 60)
 
         cond_c = df_today[reason_col].astype(str).str.contains(r'(C|无需收取保证金)', regex=True, na=False)
-        mask_c = cond_c & (days_diff >= 365)
+        mask_c = cond_c & (days_diff >= 270)
 
         df_target = df_today[mask_be | mask_c].copy()
 
