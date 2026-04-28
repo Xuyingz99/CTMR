@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Stealth Ping Streamlit App
-        # 防止陷入死循环，强制返回成功状态
+        # 终极修复：在网址后面加上 ?ping=$(date +%s)，生成动态时间戳，彻底击穿云端缓存！
         run: |
-          curl -sL --max-redirs 3 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" https://ctmr2026.streamlit.app > /dev/null || true
+          curl -sL --max-redirs 3 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "https://ctmr2026.streamlit.app/?ping=$(date +%s)" > /dev/null || true
           echo "Ping executed successfully!"
