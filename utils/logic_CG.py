@@ -713,6 +713,16 @@ def process_overdue_purchase(uploaded_files):
     actual_dedup_subset = [col for col in dedup_subset if col in df.columns]
     df.drop_duplicates(subset=actual_dedup_subset, inplace=True)
 
+    # === 【新增逻辑】玉米中心业务部门拆解 ===
+    if "区域公司" in df.columns and "业务部门" in df.columns:
+        mask = (df["区域公司"] == "玉米中心") & df["业务部门"].astype(str).str.contains("营口|锦州|大连", na=False)
+        if mask.any():
+            def extract_keyword(text):
+                match = re.search(r'(营口|锦州|大连)', str(text))
+                return match.group(1) if match else text
+            df.loc[mask, "区域公司"] = df.loc[mask, "业务部门"].apply(extract_keyword)
+            df.loc[mask, "大区"] = "港口平台"
+
     df = process_basic_columns(df, DATE_COLS, FLOAT_COLS, INT_COLS)
     if "逾期分类" in df.columns:
         df = df[df["逾期分类"] == "A 实际已经逾期（含进口采购）"].copy()
