@@ -243,7 +243,7 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-        return report_base + f"。分大区情况如下：\n{region_summary_str}"
+        return report_base + f"。\n\n分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
 def generate_customer_analysis_report_zj(df_processed, today_display):
@@ -376,7 +376,7 @@ def generate_region_department_report_zj(df_region, today_display, region_name):
         if trigger_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_str}"
-        return report_base + f"。分经营部情况如下：\n{dept_str}"
+        return report_base + f"。\n\n分经营部情况如下：\n{dept_str}"
     except: return f"{region_name}大区报告生成失败。"
 
 def generate_region_customer_report_zj(df_region, today_display, region_name):
@@ -431,27 +431,20 @@ def generate_region_customer_report_zj(df_region, today_display, region_name):
     except: return f"{region_name}大区客户分析报告生成失败。"
 
 def process_additional_margin_logic(uploaded_file, region_filter):
-    """
-    追加保证金处理核心逻辑
-    region_filter: "中粮贸易" | "沿海大区" | "沿江大区" | "内陆大区" | "东北大区"
-    """
     logs = []
     try:
         today_display = f"{datetime.now().month}月{datetime.now().day}日"
         
-        # 1. 加载
         book = openpyxl.load_workbook(uploaded_file)
         ws_original = book.worksheets[0] 
         
-        # 2. 筛选
         if '追保处理' in book.sheetnames: del book['追保处理']
         ws_processed = book.create_sheet('追保处理')
         filtered_rows, column_names = apply_excel_like_filtering_zj(ws_original, ws_processed)
         
         if not filtered_rows:
-            return None, ["⚠️ 警告：筛选后没有数据行！"], "", ""
+            return None, ["⚠️ 警告：筛选后没有数据行！"], "", "", ""
 
-        # 3. 准备数据
         data_for_analysis = []
         for _, row_data in filtered_rows:
             row_dict = {}
@@ -461,39 +454,36 @@ def process_additional_margin_logic(uploaded_file, region_filter):
             data_for_analysis.append(row_dict)
         df_processed = pd.DataFrame(data_for_analysis)
         
-        # 4. 报告生成逻辑 (按大区定制)
+        max_date_str = datetime.now().strftime('%m%d')
+        hesuan_col = next((c for c in df_processed.columns if '核算日期' in str(c)), None)
+        if hesuan_col:
+            dates = pd.to_datetime(df_processed[hesuan_col], errors='coerce')
+            if not dates.isna().all():
+                max_date_str = dates.max().strftime('%m%d')
+
         if '分析报告' in book.sheetnames: del book['分析报告']
         ws_report = book.create_sheet('分析报告')
         
-        # 找到大区列
         b_col = next((c for c in df_processed.columns if '大区' in str(c) and '玉米中心' not in str(c)), None)
-        
         report_A = ""
         report_B = ""
         
         if region_filter == "中粮贸易":
-            # 生成总量报告
             report_A = generate_analysis_report_zj(df_processed, today_display)
             report_B = generate_customer_analysis_report_zj(df_processed, today_display)
         else:
-            # 生成特定大区报告
             if not b_col:
-                return None, [f"❌ 数据中找不到“大区”列，无法进行大区筛选。"], "", ""
-            
-            # 过滤 DataFrame
+                return None, ["❌ 数据中找不到“大区”列，无法进行大区筛选。"], "", "", ""
             df_region = df_processed[df_processed[b_col] == region_filter].copy()
-            
             if len(df_region) == 0:
-                return None, [f"⚠️ 筛选结果中没有包含【{region_filter}】的数据。"], "", ""
+                return None, [f"⚠️ 筛选结果中没有包含【{region_filter}】的数据。"], "", "", ""
             
             report_A = generate_region_department_report_zj(df_region, today_display, region_filter)
             report_B = generate_region_customer_report_zj(df_region, today_display, region_filter)
 
-        # 写入报告
         ws_report.cell(row=1, column=1, value=report_A)
         ws_report.cell(row=1, column=2, value=report_B)
         
-        # 格式设置
         ws_report.column_dimensions['A'].width = 100
         ws_report.column_dimensions['B'].width = 100
         for row in ws_report.iter_rows():
@@ -504,14 +494,12 @@ def process_additional_margin_logic(uploaded_file, region_filter):
                     ws_report.row_dimensions[cell.row].height = 200
         ws_report.freeze_panes = 'A2'
 
-        # 5. 导出
         output = io.BytesIO()
         book.save(output)
         output.seek(0)
         
         logs.append(f"✅ 【{region_filter}】分析报告生成成功！")
-        return output, logs, report_A, report_B
-
+        return output, logs, report_A, report_B, max_date_str
     except Exception as e:
         import traceback
-        return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", ""
+        return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", "", ""
