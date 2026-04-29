@@ -562,9 +562,16 @@ def generate_report(df, df_unique):
                 prefix = "主要由客户原因造成的"
             elif r1 == '二、我方原因/我方原因为主':
                 prefix = "主要由我方原因造成的"
-            else:
+            elif r1 == '三、既非我方原因也非对方原因':
                 prefix = "既非我方原因也非对方原因造成的"
-            text_part = f"{prefix}逾期金额{format_num(amt, 0, True)}万元，占比{format_num(amt/safe_total*100, is_percent=True)}"
+            else:
+                prefix = ""
+                
+            if prefix:
+                text_part = f"{prefix}逾期金额{format_num(amt, 0, True)}万元，占比{format_num(amt/safe_total*100, is_percent=True)}"
+            else:
+                text_part = f"其他原因逾期金额{format_num(amt, 0, True)}万元，占比{format_num(amt/safe_total*100, is_percent=True)}"
+                
             is_last = (current_idx == r1_texts_count)
             punctuation = "；详情如下：" if is_last else "；"
             run_part = p2.add_run(text_part + punctuation)
@@ -853,7 +860,10 @@ def generate_report(df, df_unique):
                 build_cell_text(cells[2], row.get('客户名称', ''), align='center', is_appendix=True)
                 dt = row.get('交货结束日期', '')
                 build_cell_text(cells[3], str(dt)[:10] if pd.notna(dt) else "", is_appendix=True)
+                
+                # ====== 核心修复点 1：抓取键更换为“合同数量(万吨)” ======
                 build_cell_text(cells[4], format_num(row.get('合同数量(万吨)', ''), 2), is_appendix=True)
+                
                 build_cell_text(cells[5], format_num(row.get('合同单价', ''), 0, True), is_appendix=True)
                 build_cell_text(cells[6], format_num(row.get('逾期天数', ''), 0, True), is_appendix=True)
                 build_cell_text(cells[7], format_qty(row.get('逾期数量（万吨）', '')), is_appendix=True)
