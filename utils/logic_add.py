@@ -454,12 +454,13 @@ def process_additional_margin_logic(uploaded_file, region_filter):
             data_for_analysis.append(row_dict)
         df_processed = pd.DataFrame(data_for_analysis)
         
-        max_date_str = datetime.now().strftime('%m%d')
+        max_date_str = f"{datetime.now().month}.{datetime.now().day}"
         hesuan_col = next((c for c in df_processed.columns if '核算日期' in str(c)), None)
         if hesuan_col:
             dates = pd.to_datetime(df_processed[hesuan_col], errors='coerce')
             if not dates.isna().all():
-                max_date_str = dates.max().strftime('%m%d')
+                max_date = dates.max()
+                max_date_str = f"{max_date.month}.{max_date.day}"
 
         if '分析报告' in book.sheetnames: del book['分析报告']
         ws_report = book.create_sheet('分析报告')
