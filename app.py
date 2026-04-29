@@ -1102,8 +1102,9 @@ def main():
                         if output_file:
                             st.success(f"✅ {selected_region}报告生成完成！")
                             
+                            today_mmdd = datetime.now().strftime('%m%d')
                             file_prefix = "中粮贸易" if selected_region == "中粮贸易" else f"{selected_region}"
-                            dl_filename = f"{file_prefix}追加保证金填报表-截至{max_date_str}.xlsx"
+                            dl_filename = f"{file_prefix}追加保证金填报表{today_mmdd}-截至{max_date_str}数据.xlsx"
                             st.download_button(
                                 label=f"📥 下载定制报告 ({dl_filename})",
                                 data=output_file,
