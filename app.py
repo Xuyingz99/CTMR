@@ -584,11 +584,10 @@ def process_margin_deposit_logic(current_file, prev_file):
 def smart_format_money_zj(value):
     try:
         if pd.isna(value) or value is None: return "0"
-        val_float = float(value)
+        val_float = round(float(value), 2)
         if abs(val_float) < 0.000001: return "0"
-        val_round = round(val_float)
-        if val_round == 0: return f"{val_float:.2f}"
-        else: return str(val_round)
+        if val_float.is_integer(): return str(int(val_float))
+        else: return f"{val_float:.2f}"
     except: return str(value)
 
 def smart_format_volume_zj(value, unit="万吨"):
@@ -616,11 +615,10 @@ def smart_format_date_zj(date_obj):
 def format_number_with_thousands_zj(value):
     try:
         if pd.isna(value) or value is None: return "0"
-        num_value = float(value)
-        if num_value == 0: return "0"
-        int_value = round(num_value)
-        if int_value == 0 and abs(num_value) > 0: return f"{num_value:.2f}"
-        return f"{int_value:,}"
+        num_value = round(float(value), 2)
+        if abs(num_value) < 0.000001: return "0"
+        if num_value.is_integer(): return f"{int(num_value):,}"
+        else: return f"{num_value:,.2f}"
     except Exception as e: return str(value)
 
 def find_header_row_zj(ws, max_rows_to_check=30):
