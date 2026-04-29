@@ -1,16 +1,70 @@
-name: Keep Streamlit App Alive
+name: Ultimate Streamlit Keep Alive
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    # 保持避开整点，每小时的 15分 和 45分 巡逻
+    - cron: "15,45 * * * *"
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Stealth Ping Streamlit App
-        # 终极修复：在网址后面加上 ?ping=$(date +%s)，生成动态时间戳，彻底击穿云端缓存！
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Puppeteer
+        run: npm install puppeteer
+
+      - name: Ultimate Wake Up Script
         run: |
-          curl -sL --max-redirs 3 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" "https://ctmr2026.streamlit.app/?ping=$(date +%s)" > /dev/null || true
-          echo "Ping executed successfully!"
+          cat << 'EOF' > wake_up.js
+          const puppeteer = require('puppeteer');
+
+          (async () => {
+            console.log('🤖 [1/5] 启动装甲隐形浏览器 (配置低内存防崩溃)...');
+            // 加入 --disable-dev-shm-usage 防止 GitHub Actions 内存溢出
+            const browser = await puppeteer.launch({ 
+              headless: "new", 
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] 
+            });
+            const page = await browser.newPage();
+            
+            // 加入动态时间戳，彻底击穿 Cloudflare/CDN 缓存
+            const targetUrl = 'https://ctmr2026.streamlit.app/?ping=' + Date.now();
+            console.log('🌐 [2/5] 正在潜入目标网站: ' + targetUrl);
+            
+            try {
+              await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+              console.log('👀 [3/5] 网页初步加载，开始扫描是否处于休眠状态...');
+
+              // 核心逻辑：扫描页面寻找 Streamlit 的唤醒按钮，并执行物理点击！
+              const clicked = await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const wakeBtn = buttons.find(b => b.innerText.includes('Yes, get this app back up') || b.innerText.includes('Wake it up'));
+                if (wakeBtn) {
+                  wakeBtn.click();
+                  return true;
+                }
+                return false;
+              });
+
+              if (clicked) {
+                console.log('⚠️ [4/5] 发现休眠按钮！已执行强力物理点击，开始等待容器冷启动 (约 60 秒)...');
+                await new Promise(r => setTimeout(r, 60000));
+              } else {
+                console.log('✅ [4/5] 未发现休眠按钮，网站处于清醒活跃状态，建立底层通讯中...');
+                await new Promise(r => setTimeout(r, 15000));
+              }
+
+              console.log('🎉 [5/5] 任务圆满完成！网站已满血复活。');
+            } catch (err) {
+              console.error('❌ 发生异常:', err.message);
+            } finally {
+              await browser.close();
+            }
+          })();
+          EOF
+          node wake_up.js
