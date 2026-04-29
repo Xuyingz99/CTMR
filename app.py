@@ -392,135 +392,6 @@ def create_A_summary_sheet(workbook, ws_A, today_date_str):
         return True, logs
     except: return False, []
 
-def create_long_term_overdue_sheet(workbook, df_today):
-    try:
-        sheet_name = "长期未处理合同明细"
-        if sheet_name in workbook.sheetnames:
-            del workbook[sheet_name]
-
-        today = pd.Timestamp(datetime.now().date())
-        if "应收保证金日期" not in df_today.columns:
-            return False, ""
-            
-        dates = pd.to_datetime(df_today["应收保证金日期"], errors='coerce')
-        days_diff = (today - dates).dt.days
-
-        reason_col = "逾期原因分类_新"
-        if reason_col not in df_today.columns:
-            return False, ""
-
-        cond_be = df_today[reason_col].astype(str).str.contains(r'(B|款已到未认领|认领为货款|E|拟终止|作废合同)', regex=True, na=False)
-        mask_be = cond_be & (days_diff >= 180)
-
-        cond_c = df_today[reason_col].astype(str).str.contains(r'(C|无需收取保证金)', regex=True, na=False)
-        mask_c = cond_c & (days_diff >= 365)
-
-        df_target = df_today[mask_be | mask_c].copy()
-
-        if df_target.empty:
-            ws_long = workbook.create_sheet(sheet_name)
-            ws_long.append(["业务部门", "合同编号", "客户", "品种", "应收保证金日期", "逾期初始保证金金额", "逾期具体原因", "逾期原因分类"])
-            beautify_sheet_common(ws_long, title_color="F8CBAD")
-            return True, ""
-
-        cols_needed = ["业务部门", "合同编号", "客户", "品种", "应收保证金日期", "逾期初始保证金金额", "逾期具体原因_新", "逾期原因分类_新"]
-        avail_cols = [c for c in cols_needed if c in df_target.columns]
-        df_target = df_target[avail_cols]
-        df_target.rename(columns={"逾期具体原因_新": "逾期具体原因", "逾期原因分类_新": "逾期原因分类"}, inplace=True)
-
-        if "业务部门" in df_target.columns:
-            replacements = ['沿海深圳', '食品原料部', '经营部', '中粮贸易（深圳）有限公司-', '（旧）']
-            for r in replacements:
-                df_target["业务部门"] = df_target["业务部门"].astype(str).str.replace(r, '', regex=False)
-
-        def sort_reason(x):
-            val = str(x).upper()
-            if 'B' in val or '款已到未认领' in val or '认领为货款' in val: return 1
-            if 'E' in val or '拟终止' in val or '作废合同' in val: return 2
-            if 'C' in val or '无需收取' in val: return 3
-            return 4
-
-        df_target['reason_sort'] = df_target['逾期原因分类'].apply(sort_reason)
-
-        if "应收保证金日期" in df_target.columns:
-            df_target["应收保证金日期_dt"] = pd.to_datetime(df_target["应收保证金日期"], errors='coerce')
-        else:
-            df_target["应收保证金日期_dt"] = pd.NaT
-
-        if "逾期初始保证金金额" in df_target.columns:
-            df_target["逾期初始保证金金额_num"] = pd.to_numeric(df_target["逾期初始保证金金额"], errors='coerce').fillna(0)
-        else:
-            df_target["逾期初始保证金金额_num"] = 0
-
-        df_target = df_target.sort_values(
-            by=['reason_sort', '逾期初始保证金金额_num', '应收保证金日期_dt'],
-            ascending=[True, False, True]
-        )
-
-        log_lines = []
-        for _, row in df_target.iterrows():
-            dept = str(row.get("业务部门", "")).strip()
-            contract = str(row.get("合同编号", "")).strip()
-            client = str(row.get("客户", "")).strip()
-            reason = str(row.get("逾期具体原因", "")).strip()
-            amt = row.get("逾期初始保证金金额_num", 0)
-            d = row.get("应收保证金日期_dt", pd.NaT)
-
-            if pd.isna(d):
-                date_str = ""
-            else:
-                date_str = f"应收日期{d.year}年{d.month}月{d.day}日"
-
-            if abs(amt) < 0.005: 
-                log_line = f"{dept}，{contract}，{client}。{reason}"
-            else:
-                log_line = f"{dept}，{contract}，{client}，{date_str}，应收金额{amt:.2f}万元。{reason}"
-            log_lines.append(log_line)
-
-        html_log = ""
-        if log_lines:
-            html_log = '<div style="background-color: #FFF3E0; padding: 15px; border-radius: 8px; border-left: 5px solid #FF9800; margin-top: 15px; margin-bottom: 15px;">'
-            html_log += '<h4 style="color: #E65100; margin-top: 0; margin-bottom: 10px;">⏳ 长期未处理合同明细提醒</h4>'
-            for line in log_lines:
-                html_log += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{line}</p>'
-            html_log += '</div>'
-
-        if "应收保证金日期" in df_target.columns:
-            df_target["应收保证金日期"] = df_target["应收保证金日期_dt"].dt.strftime('%Y-%m-%d')
-
-        df_target.drop(columns=['reason_sort', '应收保证金日期_dt', '逾期初始保证金金额_num'], inplace=True, errors='ignore')
-
-        ws_long = workbook.create_sheet(sheet_name)
-        for r in dataframe_to_rows(df_target, index=False, header=True):
-            ws_long.append(r)
-
-        beautify_sheet_common(ws_long, title_color="F8CBAD")
-        auto_fit_columns(ws_long)
-
-        left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        right_align = Alignment(horizontal='right', vertical='center', wrap_text=True)
-        for row in range(2, ws_long.max_row + 1):
-            ws_long.row_dimensions[row].height = 24.5
-        for col in range(1, ws_long.max_column + 1):
-            header_val = str(ws_long.cell(row=1, column=col).value or "")
-            if "金额" in header_val or "日期" in header_val:
-                for row in range(2, ws_long.max_row + 1):
-                    ws_long.cell(row=row, column=col).alignment = right_align
-                    if "金额" in header_val:
-                        try:
-                            if ws_long.cell(row=row, column=col).value:
-                                ws_long.cell(row=row, column=col).value = float(ws_long.cell(row=row, column=col).value)
-                                ws_long.cell(row=row, column=col).number_format = '0.00'
-                        except: pass
-            elif "原因" in header_val or "分类" in header_val or "客户" in header_val:
-                for row in range(2, ws_long.max_row + 1):
-                    ws_long.cell(row=row, column=col).alignment = left_align
-
-        return True, html_log
-
-    except Exception as e:
-        return False, f"<div style='color:red;'>生成长期未处理明细出错: {str(e)}</div>"
-
 def process_margin_deposit_logic(current_file, prev_file):
     try:
         book = openpyxl.load_workbook(current_file)
@@ -547,7 +418,7 @@ def process_margin_deposit_logic(current_file, prev_file):
                 df_today.loc[mask_empty & (df_today[clause_col] == "否"), ["逾期具体原因_新", "逾期原因分类_新"]] = ["合同未约定收取保证金", "C无需收取保证金：指政策性业务、对养殖户销售业务、分合同、公司批准免收保证金客户的。此类要写明不收取保证金的具体原因。"]
         temp_stream.seek(0)
         book = openpyxl.load_workbook(temp_stream)
-        for s in ["WSBZJQKB_Processed", "A类逾期明细", "A类逾期明细汇总", "长期未处理合同明细"]:
+        for s in ["WSBZJQKB_Processed", "A类逾期明细", "A类逾期明细汇总"]:
             if s in book.sheetnames: del book[s]
         ws_proc = book.create_sheet("WSBZJQKB_Processed")
         for r in dataframe_to_rows(df_today, index=False, header=True): ws_proc.append(r)
@@ -556,23 +427,10 @@ def process_margin_deposit_logic(current_file, prev_file):
         for r in dataframe_to_rows(df_A, index=False, header=True): ws_A.append(r)
         clean_and_organize_A_sheet(ws_A)
         optimize_A_sheet_formatting(ws_A)
-        
-        success_long, log_long = create_long_term_overdue_sheet(book, df_today)
-        
         today_str = datetime.now().strftime("%Y.%m.%d")
         success, logs = create_A_summary_sheet(book, ws_A, today_str)
-        
-        if log_long:
-            logs.append(log_long)
-            
         if "WSBZJQKB" in book.sheetnames: fill_original_sheet_columns(book["WSBZJQKB"], df_today)
         if "WSBZJQKB_Processed" in book.sheetnames: del book["WSBZJQKB_Processed"]
-        
-        if "A类逾期明细" in book.sheetnames:
-            idx = book.sheetnames.index("A类逾期明细")
-            if idx != 0:
-                book.move_sheet("A类逾期明细", offset=-idx)
-                
         output = io.BytesIO()
         book.save(output)
         output.seek(0)
@@ -813,7 +671,7 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-        return report_base + f"。\n\n分大区情况如下：\n{region_summary_str}"
+        return report_base + f"。分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
 def generate_customer_analysis_report_zj(df_processed, today_display):
@@ -959,7 +817,7 @@ def generate_region_customer_report_zj(df_region, today_display, region_name):
             elif '调整后待追加保证金金额' in col_str: am_col = col_name
             elif '逾期' in col_str and '天' in col_str: an_col = col_name
             elif '经营部' in col_str: dept_col = col_name
-            elif '保证金类型' in col_str: deposit_type_col = col_name
+            elif '保证金类型' in col_str: deposit_type_col = deposit_type_col = col_name
 
         if not c_col or not am_col: return f"{region_name}大区客户分析报告生成失败。"
 
@@ -1013,7 +871,7 @@ def process_additional_margin_logic(uploaded_file, region_filter):
         filtered_rows, column_names = apply_excel_like_filtering_zj(ws_original, ws_processed)
         
         if not filtered_rows:
-            return None, ["⚠️ 警告：筛选后没有数据行！"], "", ""
+            return None, ["⚠️ 警告：筛选后没有数据行！"], "", "", ""
 
         data_for_analysis = []
         for _, row_data in filtered_rows:
@@ -1024,6 +882,13 @@ def process_additional_margin_logic(uploaded_file, region_filter):
             data_for_analysis.append(row_dict)
         df_processed = pd.DataFrame(data_for_analysis)
         
+        max_date_str = datetime.now().strftime('%m%d')
+        hesuan_col = next((c for c in df_processed.columns if '核算日期' in str(c)), None)
+        if hesuan_col:
+            dates = pd.to_datetime(df_processed[hesuan_col], errors='coerce')
+            if not dates.isna().all():
+                max_date_str = dates.max().strftime('%m%d')
+
         if '分析报告' in book.sheetnames: del book['分析报告']
         ws_report = book.create_sheet('分析报告')
         
@@ -1036,10 +901,10 @@ def process_additional_margin_logic(uploaded_file, region_filter):
             report_B = generate_customer_analysis_report_zj(df_processed, today_display)
         else:
             if not b_col:
-                return None, ["❌ 数据中找不到“大区”列，无法进行大区筛选。"], "", ""
+                return None, ["❌ 数据中找不到“大区”列，无法进行大区筛选。"], "", "", ""
             df_region = df_processed[df_processed[b_col] == region_filter].copy()
             if len(df_region) == 0:
-                return None, [f"⚠️ 筛选结果中没有包含【{region_filter}】的数据。"], "", ""
+                return None, [f"⚠️ 筛选结果中没有包含【{region_filter}】的数据。"], "", "", ""
             
             report_A = generate_region_department_report_zj(df_region, today_display, region_filter)
             report_B = generate_region_customer_report_zj(df_region, today_display, region_filter)
@@ -1062,10 +927,10 @@ def process_additional_margin_logic(uploaded_file, region_filter):
         output.seek(0)
         
         logs.append(f"✅ 【{region_filter}】分析报告生成成功！")
-        return output, logs, report_A, report_B
+        return output, logs, report_A, report_B, max_date_str
     except Exception as e:
         import traceback
-        return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", ""
+        return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", "", ""
 
 def format_html_content_for_credit(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -1232,14 +1097,13 @@ def main():
             if st.button("🚀 生成报告 / Generate Report"):
                 if uploaded_file:
                     with st.spinner(f"🤖 正在为【{selected_region}】生成专属报告..."):
-                        output_file, logs, report_a, report_b = process_additional_margin_logic(uploaded_file, selected_region)
+                        output_file, logs, report_a, report_b, max_date_str = process_additional_margin_logic(uploaded_file, selected_region)
                         
                         if output_file:
                             st.success(f"✅ {selected_region}报告生成完成！")
                             
-                            today_mmdd = datetime.now().strftime('%m%d')
-                            file_prefix = "" if selected_region == "中粮贸易" else f"{selected_region}"
-                            dl_filename = f"{file_prefix}追加保证金填报表{today_mmdd}.xlsx"
+                            file_prefix = "中粮贸易" if selected_region == "中粮贸易" else f"{selected_region}"
+                            dl_filename = f"{file_prefix}追加保证金填报表-截至{max_date_str}.xlsx"
                             st.download_button(
                                 label=f"📥 下载定制报告 ({dl_filename})",
                                 data=output_file,
