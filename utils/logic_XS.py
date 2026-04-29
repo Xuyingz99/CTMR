@@ -60,7 +60,6 @@ def locate_header_and_read(file_stream, key_columns):
         
         if '大区' in df.columns:
             col_idx = df.columns.get_loc('大区')
-            # 防止"大区"列重复导致返回数组而引发报错
             if isinstance(col_idx, np.ndarray):
                 start = np.where(col_idx)[0][0]
             elif isinstance(col_idx, slice):
@@ -69,7 +68,6 @@ def locate_header_and_read(file_stream, key_columns):
                 start = col_idx
             df = df.iloc[:, start:]
             
-        # 【核心修复】强制剔除所有重复重名的列，防止 concat 时引发 InvalidIndexError
         df = df.loc[:, ~df.columns.duplicated()]
         
         df.dropna(how='all', inplace=True)
@@ -236,7 +234,6 @@ def generate_collection_reminder(df_unique):
     
     regions = df_unique['大区'].dropna().unique() if '大区' in df_unique.columns else []
     
-    # 逻辑 1：如果有两个及以上的大区，或者完全没有大区数据 -> 只生成中粮贸易总体！
     if len(regions) >= 2 or len(regions) == 0:
         lines.append("中粮贸易：")
         tot_cnt = len(df_unique)
@@ -264,9 +261,7 @@ def generate_collection_reminder(df_unique):
             r_stats = df_unique.groupby('大区').agg({'合同编号': 'count', '逾期数量（万吨）': 'sum', '逾期金额（万元）': 'sum'}).sort_values(by='逾期金额（万元）', ascending=False)
             for i, r in enumerate(r_stats.index, 1):
                 lines.append(f"{i}、{r}，逾期销售提货合同合计{r_stats.loc[r, '合同编号']}笔，逾期数量{format_qty(r_stats.loc[r, '逾期数量（万吨）'])}万吨，逾期金额{format_num(r_stats.loc[r, '逾期金额（万元）'], 0, True)}万元。")
-        # ⚠️ 此处彻底屏蔽原先的循环“四大区”明细数据生成
     
-    # 逻辑 2：如果只有一个大区 -> 屏蔽中粮贸易，只生成这一个大区的！
     elif len(regions) == 1:
         region = regions[0]
         r_df = df_unique[df_unique['大区'] == region]
@@ -467,6 +462,7 @@ def set_repeat_table_header(row):
     tblHeader = OxmlElement('w:tblHeader')
     tblHeader.set(qn('w:val'), "true")
     trPr.append(tblHeader)
+
 def generate_report(df, df_unique):
     total_amount = df_unique['逾期金额（万元）'].sum()
     safe_total = total_amount if total_amount > 0 else 1e-9
@@ -562,7 +558,12 @@ def generate_report(df, df_unique):
         amt = r1_stats.loc[r1, '逾期金额（万元）'] if r1 in r1_stats.index else 0
         if amt > 0:
             current_idx += 1
-            prefix = "主要由客户原因造成的" if "客户原因" in r1 else ("主要由我方原因造成的" if "我方原因" in r1 else "既非我方原因也非对方原因造成的")
+            if r1 == '一、客户原因/客户原因为主':
+                prefix = "主要由客户原因造成的"
+            elif r1 == '二、我方原因/我方原因为主':
+                prefix = "主要由我方原因造成的"
+            else:
+                prefix = "既非我方原因也非对方原因造成的"
             text_part = f"{prefix}逾期金额{format_num(amt, 0, True)}万元，占比{format_num(amt/safe_total*100, is_percent=True)}"
             is_last = (current_idx == r1_texts_count)
             punctuation = "；详情如下：" if is_last else "；"
@@ -744,12 +745,12 @@ def generate_report(df, df_unique):
     run_unit = p_unit.add_run('单位：万吨')
     set_font_mixed(run_unit, 9.0, bold=False, east_asia='微软雅黑', ascii_font='Times New Roman')
 
-    table4 = doc.add_table(rows=1, cols=4)
+    table4 = doc.add_table(rows=1, cols=6)
     table4.alignment = WD_TABLE_ALIGNMENT.CENTER
-    widths4 = [1.6, 8.2, 2.8, 2.5]
+    widths4 = [1.32, 6.14, 2.88, 1.77, 1.84, 1.73]
     set_fixed_col_widths(table4, widths4, is_cm=True)
     
-    headers4 = ['序号', '客户名称/所属集团', '品种', '逾期数量']
+    headers4 = ['序号', '客户名称/所属集团', '品种', '最长逾期天数', '逾期数量', '逾期数量占比']
     for i, h in enumerate(headers4):
         build_cell_text(table4.cell(0, i), h, bold=True)
         set_cell_background(table4.cell(0, i), 'D9D9D9')
@@ -759,20 +760,25 @@ def generate_report(df, df_unique):
     def add_cust_rows(c_type, subtotal_name, start_idx):
         sub_df = df_unique[df_unique['客户大类'] == c_type]
         if sub_df.empty: return start_idx
-        agg_df = sub_df.groupby('展示客户名').agg({'逾期数量（万吨）': 'sum', '品种': lambda x: '、'.join(x.dropna().astype(str).unique())}).sort_values(by='逾期数量（万吨）', ascending=False).reset_index()
+        agg_df = sub_df.groupby('展示客户名').agg({'逾期数量（万吨）': 'sum', '品种': lambda x: '、'.join(x.dropna().astype(str).unique()), '逾期天数': 'max'}).sort_values(by='逾期数量（万吨）', ascending=False).reset_index()
         for _, row in agg_df.iterrows():
             cells = table4.add_row().cells
             build_cell_text(cells[0], start_idx)
             build_cell_text(cells[1], row['展示客户名'])
             build_cell_text(cells[2], row.get('品种', ''))
-            build_cell_text(cells[3], format_qty(row['逾期数量（万吨）']))
+            build_cell_text(cells[3], format_num(row.get('逾期天数', 0), 0, True))
+            build_cell_text(cells[4], format_qty(row['逾期数量（万吨）']))
+            ratio = (row['逾期数量（万吨）'] / safe_total_qty * 100) if safe_total_qty > 0 else 0
+            build_cell_text(cells[5], format_num(ratio, is_percent=True))
             set_table_row_height(table4.rows[-1], Cm(0.44).pt)
             start_idx += 1
         sub_cells = table4.add_row().cells
-        sub_cells[0].merge(sub_cells[2])
+        sub_cells[0].merge(sub_cells[3])
         build_cell_text(sub_cells[0], subtotal_name, bold=True)
-        build_cell_text(sub_cells[3], format_qty(agg_df['逾期数量（万吨）'].sum()), bold=True)
-        for c in [sub_cells[0], sub_cells[3]]: set_cell_background(c, 'D9D9D9')
+        build_cell_text(sub_cells[4], format_qty(agg_df['逾期数量（万吨）'].sum()), bold=True)
+        sub_ratio = (agg_df['逾期数量（万吨）'].sum() / safe_total_qty * 100) if safe_total_qty > 0 else 0
+        build_cell_text(sub_cells[5], format_num(sub_ratio, is_percent=True), bold=True)
+        for c in [sub_cells[0], sub_cells[4], sub_cells[5]]: set_cell_background(c, 'D9D9D9')
         set_table_row_height(table4.rows[-1], Cm(0.44).pt)
         return start_idx
 
@@ -782,10 +788,11 @@ def generate_report(df, df_unique):
     idx = add_cust_rows('集团内部客户', '集团内部客户小计', idx)
 
     tot_cells4 = table4.add_row().cells
-    tot_cells4[0].merge(tot_cells4[2])
+    tot_cells4[0].merge(tot_cells4[3])
     build_cell_text(tot_cells4[0], '汇总', bold=True)
-    build_cell_text(tot_cells4[3], format_qty(df_unique['逾期数量（万吨）'].sum()), bold=True)
-    for c in [tot_cells4[0], tot_cells4[3]]: set_cell_background(c, 'DEEBF6')
+    build_cell_text(tot_cells4[4], format_qty(df_unique['逾期数量（万吨）'].sum()), bold=True)
+    build_cell_text(tot_cells4[5], '100%', bold=True)
+    for c in [tot_cells4[0], tot_cells4[4], tot_cells4[5]]: set_cell_background(c, 'DEEBF6')
     set_table_row_height(table4.rows[-1], Cm(0.44).pt)
     apply_table_borders(table4)
 
@@ -846,7 +853,7 @@ def generate_report(df, df_unique):
                 build_cell_text(cells[2], row.get('客户名称', ''), align='center', is_appendix=True)
                 dt = row.get('交货结束日期', '')
                 build_cell_text(cells[3], str(dt)[:10] if pd.notna(dt) else "", is_appendix=True)
-                build_cell_text(cells[4], format_num(row.get('合同数量（万吨）', ''), 2), is_appendix=True)
+                build_cell_text(cells[4], format_num(row.get('合同数量(万吨)', ''), 2), is_appendix=True)
                 build_cell_text(cells[5], format_num(row.get('合同单价', ''), 0, True), is_appendix=True)
                 build_cell_text(cells[6], format_num(row.get('逾期天数', ''), 0, True), is_appendix=True)
                 build_cell_text(cells[7], format_qty(row.get('逾期数量（万吨）', '')), is_appendix=True)
