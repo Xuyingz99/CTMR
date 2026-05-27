@@ -569,7 +569,44 @@ def process_margin_deposit_logic(current_file, prev_file):
         # 修复点 3：把长期的日志拼接给前端网页展示
         if log_long:
             logs.append(log_long)
-            
+
+        # 查找对照日已逾期A类合同在今日报表中完全消失的合同
+        today_date_for_check = datetime.now().date()
+        a_class_mask = df_last['逾期原因分类'].astype(str).str.contains('A实际已逾期', na=False)
+        if '应收保证金日期' in df_last.columns:
+            df_last_dates = pd.to_datetime(df_last['应收保证金日期'], errors='coerce')
+            overdue_mask = df_last_dates.notna() & (df_last_dates.dt.date < today_date_for_check)
+            a_overdue_last = df_last[a_class_mask & overdue_mask]
+        else:
+            a_overdue_last = df_last[a_class_mask]
+
+        today_cids = set(df_today['合同编号'].astype(str).str.strip())
+        disappeared_rows = []
+        for _, row in a_overdue_last.iterrows():
+            cid = str(row.get('合同编号', '')).strip()
+            if cid and cid != 'nan' and cid not in today_cids:
+                disappeared_rows.append(row)
+
+        if disappeared_rows:
+            html_disappeared = '<div style="background-color: #FFF0F0; padding: 15px; border-radius: 8px; border-left: 5px solid #DC3545; margin-top: 15px; margin-bottom: 15px;">'
+            html_disappeared += '<h4 style="color: #A71D2A; margin-top: 0; margin-bottom: 10px;">🔴 前一日已回款合同明细</h4>'
+            for row in disappeared_rows:
+                dept = str(row.get('业务部门', '')).strip()
+                cid = str(row.get('合同编号', '')).strip()
+                client = str(row.get('客户', '')).strip()
+                date_val = row.get('应收保证金日期', '')
+                if pd.notna(date_val):
+                    try:
+                        d = pd.to_datetime(date_val)
+                        date_str = f"{d.year}年{d.month}月{d.day}日"
+                    except Exception:
+                        date_str = str(date_val)
+                else:
+                    date_str = ''
+                html_disappeared += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{dept}，{cid}，{client}，应收日期{date_str}</p>'
+            html_disappeared += '</div>'
+            logs.append(html_disappeared)
+
         if "WSBZJQKB" in book.sheetnames: fill_original_sheet_columns(book["WSBZJQKB"], df_today)
         if "WSBZJQKB_Processed" in book.sheetnames: del book["WSBZJQKB_Processed"]
         
