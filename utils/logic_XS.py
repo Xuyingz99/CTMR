@@ -37,6 +37,15 @@ COLOR_BATCH = "E6F7FF"
 COLOR_ONCE = "FFF7E6"   
 
 # ================= 数据加载与清洗 =================
+def _normalize_col_name(name):
+    """去除列名中的所有空白字符，包括全角空格(U+3000)、不间断空格(U+00A0)等"""
+    import re
+    s = str(name)
+    s = s.replace('　', ' ')   # 全角空格 → 普通空格
+    s = s.replace(' ', ' ')   # 不间断空格 → 普通空格
+    s = re.sub(r'\s+', '', s)      # 清除所有ASCII空白字符
+    return s
+
 def locate_header_and_read(file_stream, key_columns):
     try:
         file_stream.seek(0)
@@ -44,7 +53,7 @@ def locate_header_and_read(file_stream, key_columns):
         header_row_index = -1
         
         for i, row in df_raw.iterrows():
-            row_values = [str(x).strip().replace('\n', '').replace(' ', '') for x in row.values if pd.notna(x)]
+            row_values = [_normalize_col_name(x) for x in row.values if pd.notna(x)]
             match_count = sum(1 for key in key_columns if key in row_values)
             if match_count >= len(key_columns) - 1:
                 header_row_index = i
@@ -56,7 +65,7 @@ def locate_header_and_read(file_stream, key_columns):
         file_stream.seek(0)
         df = pd.read_excel(file_stream, header=header_row_index)
         
-        df.columns = df.columns.astype(str).str.replace('\n', '', regex=False).str.strip()
+        df.columns = [_normalize_col_name(c) for c in df.columns]
         
         if '大区' in df.columns:
             col_idx = df.columns.get_loc('大区')
@@ -953,8 +962,8 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
     logs = []
     header_keywords = ["大区", "经营部", "合同编号", "客户名称"]
     date_columns = ["合同签订日期", "交货开始日期", "交货结束日期", "预计完成日期"]
-    all_numeric_columns = ["合同数量", "合同单价", "合同金额", "调整后逾期销售金额", "逾期天数I", "逾期天数Il", "逾期天数II", "逾期天数IV", "逾期天数V", "逾期天数VI"]
-    special_int_columns = ["逾期天数I", "逾期天数Il", "逾期天数II", "逾期天数IV", "逾期天数V", "逾期天数VI"]
+    all_numeric_columns = ["合同数量", "合同单价", "合同金额", "调整后逾期销售金额", "逾期天数I", "逾期天数II", "逾期天数III", "逾期天数IV", "逾期天数V", "逾期天数VI"]
+    special_int_columns = ["逾期天数I", "逾期天数II", "逾期天数III", "逾期天数IV", "逾期天数V", "逾期天数VI"]
 
     df_batch = pd.DataFrame()
     if batch_files:
@@ -965,7 +974,8 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
         if df_list:
             temp_combined = pd.concat(df_list, ignore_index=True).drop_duplicates()
             df_batch = process_basic_columns(temp_combined, date_columns, all_numeric_columns, special_int_columns)
-            calc_cols = [c for c in special_int_columns if c in df_batch.columns]
+            col_map = {_normalize_col_name(c): c for c in df_batch.columns}
+            calc_cols = [col_map[_normalize_col_name(c)] for c in special_int_columns if _normalize_col_name(c) in col_map]
             df_batch['逾期天数'] = df_batch[calc_cols].max(axis=1).fillna(0) if calc_cols else 0
             df_batch['_Data_Source'] = 'batch'
 
