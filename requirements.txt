@@ -14,3 +14,6 @@ plotly               # 如果未来要做交互式图表
 matplotlib           # 基础绘图库
 pywin32; sys_platform == 'win32'
 PyGithub
+matplotlib
+seaborn
+scikit-learn
