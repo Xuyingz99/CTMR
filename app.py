@@ -571,7 +571,15 @@ def process_margin_deposit_logic(current_file, prev_file):
             logs.append(log_long)
 
         # 查找对照日已逾期A类合同在今日报表中完全消失的合同
-        today_date_for_check = datetime.now().date()
+        prev_filename = prev_file.name if hasattr(prev_file, 'name') else ''
+        m = re.search(r'(\d{1,2})\.(\d{1,2})', prev_filename)
+        if m:
+            try:
+                today_date_for_check = datetime(datetime.now().year, int(m.group(1)), int(m.group(2))).date()
+            except ValueError:
+                today_date_for_check = datetime.now().date()
+        else:
+            today_date_for_check = datetime.now().date()
         a_class_mask = df_last['逾期原因分类'].astype(str).str.contains('A实际已逾期', na=False)
         if '应收保证金日期' in df_last.columns:
             df_last_dates = pd.to_datetime(df_last['应收保证金日期'], errors='coerce')
