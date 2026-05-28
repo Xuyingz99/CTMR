@@ -22,74 +22,164 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(
     page_title="Take It Easy - 智能办公助手",
-    page_icon="✨",
+    page_icon="🌍",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-st.markdown("""
+# ==========================================
+# 🎨 动态主题配置引擎
+# ==========================================
+THEMES = {
+    "🏝️ 狸克海岛 (默认)": {
+        "--ac-bg": "#F9F6ED",         "--ac-text": "#604F43",
+        "--ac-green": "#59C19A",      "--ac-green-dark": "#439E7C",
+        "--ac-yellow": "#F7D273",     "--ac-yellow-dark": "#D4A93E",
+        "--ac-wood": "#D2BA99",       "--ac-card": "#FFFFFF"
+    },
+    "🌸 樱花季 (春日)": {
+        "--ac-bg": "#FFF5F7",         "--ac-text": "#6E4A55",
+        "--ac-green": "#F7A8B8",      "--ac-green-dark": "#D98A9A",
+        "--ac-yellow": "#FFEBF0",     "--ac-yellow-dark": "#F4C2C2",
+        "--ac-wood": "#E8CDD5",       "--ac-card": "#FFFFFF"
+    },
+    "🌊 冲浪海滩 (夏日)": {
+        "--ac-bg": "#F2F9FF",         "--ac-text": "#2C4C5E",
+        "--ac-green": "#6AC4D9",      "--ac-green-dark": "#4A9EAF",
+        "--ac-yellow": "#E6F4F1",     "--ac-yellow-dark": "#8BD3E6",
+        "--ac-wood": "#B5C8D6",       "--ac-card": "#FFFFFF"
+    },
+    "🍁 枫叶森林 (秋日)": {
+        "--ac-bg": "#FCF6F0",         "--ac-text": "#5C3A21",
+        "--ac-green": "#E0855A",      "--ac-green-dark": "#C2673E",
+        "--ac-yellow": "#FAEDD4",     "--ac-yellow-dark": "#E6C57A",
+        "--ac-wood": "#D6BA9C",       "--ac-card": "#FFFFFF"
+    }
+}
+
+# 初始化 Session State 中的当前主题
+if "current_theme" not in st.session_state:
+    st.session_state.current_theme = "🏝️ 狸克海岛 (默认)"
+
+# 提取当前主题的 CSS 变量
+current_theme_vars = THEMES[st.session_state.current_theme]
+css_vars_string = "\n".join([f"        {k}: {v};" for k, v in current_theme_vars.items()])
+
+# 动态注入 CSS
+st.markdown(f"""
 <style>
-    html { font-size: 18px !important; }
-    :root {
-        --deepseek-blue: #4d6bfe;
-        --deepseek-dark: #2b4cff;
-        --btn-gradient: linear-gradient(90deg, #4d6bfe 0%, #2b4cff 100%);
-        --bg-color: #f8f9fa;
-        --text-main: #1f1f1f;
-        --text-sub: #5f6368;
-    }
-    .stApp { background-color: var(--bg-color); }
-    .header-container { text-align: center; padding: 3rem 0 1rem 0; }
-    .main-title {
-        font-size: 4.5rem !important; font-weight: 800; letter-spacing: -2px; margin: 0;
-        background: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
-        background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        animation: shine 5s linear infinite;
-    }
-    @keyframes shine { to { background-position: 200% center; } }
-    .sub-title { font-size: 1rem; color: var(--text-sub); letter-spacing: 2px; text-transform: uppercase; margin-top: 0.5rem; }
-    .greeting-text { font-size: 2rem; font-weight: 300; color: var(--text-main); text-align: center; margin-bottom: 2rem; }
-    div[role="radiogroup"] > label > div:first-child { display: none !important; }
-    div[role="radiogroup"] { display: flex; justify-content: center; gap: 15px; width: 100%; margin-bottom: 25px; }
-    div[role="radiogroup"] label {
-        background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 15px;
-        text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); cursor: pointer; flex: 1;
-        transition: all 0.3s; min-height: 80px; display: flex; align-items: center; justify-content: center;
-        font-weight: 600; color: var(--text-sub);
-    }
-    div[role="radiogroup"] label[data-checked="true"] {
-        border: 2px solid transparent !important;
-        background: linear-gradient(white, white) padding-box, var(--btn-gradient) border-box !important;
-        color: var(--deepseek-blue) !important; transform: translateY(-4px); box-shadow: 0 8px 20px rgba(77, 107, 254, 0.2);
-    }
-    .info-box {
-        background: #ffffff; border-left: 4px solid var(--deepseek-blue); padding: 20px 25px;
-        border-radius: 0 8px 8px 0; margin-bottom: 25px; color: #4a4a4a; font-size: 1rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.03); text-align: left; line-height: 1.8;
-    }
-    .info-title { font-weight: 700; color: #1f1f1f; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-    [data-testid="stFileUploader"] section {
-        border-radius: 12px; background-color: white; border: 2px dashed #dbe0ea; padding: 1.5rem;
-    }
-    [data-testid="stFileUploader"] section:hover { border-color: var(--deepseek-blue); }
-    div.stButton > button {
-        width: 100%; height: 60px; border-radius: 12px; font-size: 1.2rem; font-weight: 600;
-        background: var(--btn-gradient); color: white; border: none; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(77, 107, 254, 0.3);
-    }
-    div.stButton > button:hover { transform: scale(1.02); box-shadow: 0 8px 25px rgba(77, 107, 254, 0.4); color: white; }
-    #MainMenu, header, footer { visibility: hidden; }
-    [data-testid="stPills"] { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 15px; }
-    [data-testid="stPills"] button {
-        border-radius: 20px !important; border: 1px solid #e0e0e0 !important; background: white !important;
-        color: #5f6368 !important; padding: 6px 20px !important; font-size: 0.95rem !important;
-        transition: all 0.2s ease; min-height: 40px !important; height: auto !important;
-    }
-    [data-testid="stPills"] button[aria-selected="true"] {
-        background: var(--btn-gradient) !important; color: white !important; border: none !important;
-        box-shadow: 0 4px 12px rgba(77, 107, 254, 0.3); font-weight: 600 !important;
-    }
-    [data-testid="stPills"] button:hover { border-color: var(--deepseek-blue) !important; color: var(--deepseek-blue) !important; transform: translateY(-1px); }
-    [data-testid="stPills"] button[aria-selected="true"]:hover { color: white !important; transform: translateY(-1px); }           
+    /* 引入圆润可爱的字体 */
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+
+    html {{ font-size: 18px !important; }}
+
+    /* ✨ 动态注入的主题色板 */
+    :root {{
+{css_vars_string}
+    }}
+
+    /* 全局背景与字体 (保留可爱的波点底纹与白色小箭头) */
+    .stApp {{
+        background-color: var(--ac-bg);
+        background-image: radial-gradient(rgba(210, 186, 153, 0.15) 2px, transparent 2px);
+        background-size: 24px 24px;
+        font-family: 'Nunito', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
+        color: var(--ac-text) !important;
+        cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), auto !important;
+    }}
+
+    /* 强制所有交互元素及其内部文字使用动森光标 */
+    button, button *, div[role="radiogroup"] label, div[role="radiogroup"] label *, a, a *, input, [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] section * {{
+        cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), auto !important;
+    }}
+
+    /* 覆盖 Streamlit 默认标题颜色 */
+    h1, h2, h3, h4, h5, h6, p, span {{
+        color: var(--ac-text) !important;
+    }}
+
+    /* 1. 网页标题美化 */
+    .header-container {{ text-align: center; padding: 2rem 0 1rem 0; }}
+    .main-title {{
+        font-size: 4rem !important; font-weight: 900; color: var(--ac-green);
+        text-shadow: 3px 3px 0px #FFFFFF, 6px 6px 0px var(--ac-wood); letter-spacing: 2px; margin: 0;
+    }}
+    .sub-title {{ font-size: 1.1rem; color: var(--ac-wood) !important; font-weight: 700; letter-spacing: 2px; margin-top: 1rem; }}
+    .greeting-text {{ font-size: 1.6rem; font-weight: 700; color: var(--ac-text); text-align: center; margin-bottom: 2rem; }}
+
+    /* 2. 顶部功能切换按钮 (清爽微投影卡片) */
+    div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
+    div[role="radiogroup"] {{
+        display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
+        gap: 16px; width: 100% !important; max-width: 964px !important; margin: 0 auto 30px auto !important;
+    }}
+    div[role="radiogroup"] label {{
+        background: var(--ac-card); border: 1px solid #E5E7EB !important; border-radius: 12px !important;
+        padding: 10px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
+        flex: 0 0 180px !important; width: 180px !important; height: 85px !important; box-sizing: border-box !important;
+        transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;
+        font-weight: 700; color: var(--ac-text) !important; font-size: 0.95rem !important; line-height: 1.3 !important;
+    }}
+    div[role="radiogroup"] label[data-checked="true"] {{
+        background: var(--ac-yellow); border-color: var(--ac-yellow-dark) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; transform: translateY(-2px);
+    }}
+    div[role="radiogroup"] label:hover:not([data-checked="true"]) {{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important; }}
+
+    /* 3. 注意事项/信息框 (清爽侧边条) */
+    .info-box {{
+        background: var(--ac-card); border: 1px solid #E9ECEF; border-left: 4px solid var(--ac-green);
+        padding: 18px 25px; border-radius: 8px; margin-bottom: 25px; color: var(--ac-text);
+        font-size: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.03); line-height: 1.8;
+    }}
+    .info-title {{ font-weight: 900; color: var(--ac-green); font-size: 1.15rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }}
+
+    /* 4. 文件上传区域 */
+    [data-testid="stFileUploader"] section {{
+        border-radius: 12px; background-color: var(--ac-card); border: 2px dashed var(--ac-green); padding: 1.5rem; transition: all 0.3s;
+    }}
+    [data-testid="stFileUploader"] section:hover {{ background-color: var(--ac-yellow); }}
+
+    /* 5. 核心操作与下载按钮 */
+    div.stButton > button, div[data-testid="stDownloadButton"] > button {{
+        width: 100%; height: 55px; border-radius: 12px; font-size: 1.15rem; font-weight: 700;
+        background-color: var(--ac-green); color: white !important; border: none;
+        box-shadow: 0 6px 0 var(--ac-green-dark); transition: all 0.15s ease;
+    }}
+    div.stButton > button:hover, div[data-testid="stDownloadButton"] > button:hover {{ background-color: var(--ac-green); transform: translateY(2px); box-shadow: 0 4px 0 var(--ac-green-dark); opacity: 0.9; }}
+    div.stButton > button:active, div[data-testid="stDownloadButton"] > button:active {{ transform: translateY(6px); box-shadow: none; }}
+
+    /* 6. Pills 标签 */
+    [data-testid="stPills"] {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }}
+    [data-testid="stPills"] button {{
+        border-radius: 12px !important; border: 1px solid var(--ac-wood) !important; background: var(--ac-card) !important;
+        color: var(--ac-text) !important; padding: 6px 20px !important; font-size: 1rem !important; font-weight: 700 !important; transition: all 0.2s ease;
+    }}
+    [data-testid="stPills"] button[aria-selected="true"] {{ background: var(--ac-green) !important; color: white !important; border-color: var(--ac-green-dark) !important; box-shadow: 0 4px 0 var(--ac-green-dark); transform: translateY(-2px); }}
+
+    /* ========================================================= */
+    /* 🍃 海岛专属加载动画 */
+    /* ========================================================= */
+    [data-testid="stSpinner"] > div > svg {{ display: none !important; }}
+    [data-testid="stSpinner"] > div {{ display: flex; align-items: center; }}
+    [data-testid="stSpinner"] > div::before {{
+        content: '';
+        display: inline-block; width: 32px; height: 32px;
+        background-image: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/icons/icon-leaf.png');
+        background-size: contain; background-repeat: no-repeat;
+        animation: ac-spin 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        margin-right: 15px;
+    }}
+    @keyframes ac-spin {{
+        0% {{ transform: rotate(0deg) scale(1); }}
+        50% {{ transform: rotate(180deg) scale(1.15); }}
+        100% {{ transform: rotate(360deg) scale(1); }}
+    }}
+    [data-testid="stSpinner"] p {{
+        color: var(--ac-green) !important; font-weight: 900 !important; font-size: 1.25rem !important; letter-spacing: 1.5px !important;
+    }}
+
+    #MainMenu, header, footer {{ visibility: hidden; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -1152,12 +1242,34 @@ def main():
 
     with col_admin:
         st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
-        with st.expander("⚙️ Admin", expanded=False):
-            pwd = st.text_input("Admin", type="password", placeholder="通行证", label_visibility="collapsed")
-            
+        with st.expander("⚙️ 设置", expanded=False):
+
+            # --- 🎨 开放功能：主题切换 ---
+            st.markdown("<div style='font-size:0.85rem; font-weight:bold; color:var(--ac-text); margin-bottom:8px;'>🎨 界面主题</div>", unsafe_allow_html=True)
+
+            theme_keys = list(THEMES.keys())
+            current_index = theme_keys.index(st.session_state.current_theme)
+
+            selected_theme = st.selectbox(
+                "选择主题",
+                theme_keys,
+                index=current_index,
+                label_visibility="collapsed"
+            )
+
+            if selected_theme != st.session_state.current_theme:
+                st.session_state.current_theme = selected_theme
+                st.rerun()
+
+            st.markdown("<hr style='margin: 10px 0; border: 1px solid #eaeaea;'>", unsafe_allow_html=True)
+
+            # --- 🔒 私密功能：核心数据更新 ---
+            st.markdown("<div style='font-size:0.85rem; font-weight:bold; color:var(--ac-text); margin-bottom:8px;'>🔒 核心数据更新</div>", unsafe_allow_html=True)
+            pwd = st.text_input("Admin", type="password", placeholder="请输入通行证...", label_visibility="collapsed")
+
             if pwd == "xuyingzhe":
                 st.success("已授权")
-                
+
                 st.markdown("""
                     <div style="font-size: 0.75rem; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px; line-height: 1.5; border: 1px solid #e0e0e0;">
                         <b>📌 上传规范说明：</b><br>
@@ -1167,7 +1279,7 @@ def main():
                         4. <b>[内部]</b> 列名需含：客户名称、所属专业化公司
                     </div>
                 """, unsafe_allow_html=True)
-                
+
                 new_mapping_file = st.file_uploader("上传清单", type=['xlsx'], label_visibility="collapsed")
                 if new_mapping_file:
                     if st.button("☁️ 云端同步", use_container_width=True):
@@ -1184,17 +1296,17 @@ def main():
                                     gh_token = st.secrets["GITHUB_TOKEN"]
                                     g = Github(gh_token)
                                     repo = g.get_repo("Xuyingz99/CTMR")
-                                    
+
                                     new_mapping_file.seek(0)
                                     content_bytes = new_mapping_file.read()
-                                    
+
                                     file_path = "客户关系清单.xlsx"
                                     try:
                                         contents = repo.get_contents(file_path)
                                         repo.update_file(contents.path, "Admin: 网页端在线热更新客户关系清单", content_bytes, contents.sha)
                                     except Exception:
                                         repo.create_file(file_path, "Admin: 网页端创建客户关系清单", content_bytes)
-                                        
+
                                     st.success("🎉 云端更新成功！网页即将刷新。")
                             except Exception as e:
                                 st.error(f"❌ 更新失败: {str(e)}")
@@ -1536,7 +1648,28 @@ def main():
                 else:
                     st.warning("⚠️ 请先上传 Excel 文件！")
 
-    st.markdown("<div style='text-align:center; color:#ccc; margin-top:50px;'>© 2026 TakeItEasy Tool</div>", unsafe_allow_html=True)
+    # 完美贯穿屏幕的底部风景线（增加了距离上方内容的 margin-top）
+    footer_html = (
+        "<div style='width: 100vw; margin-left: calc(-50vw + 50%); text-align: center; "
+        "margin-top: 180px; "
+        "padding-top: 60px; padding-bottom: 30px; position: relative; overflow: hidden;'>"
+
+        ""
+        "<div style=\"height: 15px; width: 110%; margin-left: -5%; "
+        "background: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/dividers/wave-yellow.svg') repeat-x center; "
+        "opacity: 0.6; margin-bottom: 25px;\"></div>"
+
+        ""
+        "<div style=\"display: flex; justify-content: center; align-items: center; gap: 12px; "
+        "color:#A4937A; font-weight: 800; font-size: 1.05rem; letter-spacing: 1px;\">"
+
+        "<span style=\"font-size: 1.5rem;\">\U0001F334</span>"
+        "&copy; 2026 Take It Easy "
+        "<span style=\"font-size: 1.5rem; transform: scaleX(-1); display: inline-block;\">\U0001F334</span>"
+
+        "</div></div>"
+    )
+    st.markdown(footer_html, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
