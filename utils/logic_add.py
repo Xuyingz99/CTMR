@@ -1,15 +1,15 @@
-import pandas as pd
+# ==========================================
+# PART 2: 追加保证金处理逻辑 (从 app.py 抽离)
+# ==========================================
 import io
 import copy
+from datetime import datetime
+import pandas as pd
 import openpyxl
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.styles import Font, Alignment
 from openpyxl.utils import get_column_letter
-from datetime import datetime
 
-# ============================================================================
-# PART 2: 追加保证金处理逻辑 (ZhuiJIA.py 集成版) - 独立封装，命名加后缀_zj
-# ============================================================================
 
 def smart_format_money_zj(value):
     try:
@@ -243,7 +243,7 @@ def generate_analysis_report_zj(df_processed, today_display):
         if trigger_date_summary_str:
             sep = "。" if overdue_contracts > 0 else "。其中，"
             report_base += f"{sep}{trigger_date_summary_str}"
-        return report_base + f"。\n\n分大区情况如下：\n{region_summary_str}"
+        return report_base + f"。分大区情况如下：\n{region_summary_str}"
     except: return "分析报告生成失败。"
 
 def generate_customer_analysis_report_zj(df_processed, today_display):
@@ -389,7 +389,7 @@ def generate_region_customer_report_zj(df_region, today_display, region_name):
             elif '调整后待追加保证金金额' in col_str: am_col = col_name
             elif '逾期' in col_str and '天' in col_str: an_col = col_name
             elif '经营部' in col_str: dept_col = col_name
-            elif '保证金类型' in col_str: deposit_type_col = col_name
+            elif '保证金类型' in col_str: deposit_type_col = deposit_type_col = col_name
 
         if not c_col or not am_col: return f"{region_name}大区客户分析报告生成失败。"
 
@@ -454,13 +454,12 @@ def process_additional_margin_logic(uploaded_file, region_filter):
             data_for_analysis.append(row_dict)
         df_processed = pd.DataFrame(data_for_analysis)
         
-        max_date_str = f"{datetime.now().month}.{datetime.now().day}"
+        max_date_str = datetime.now().strftime('%m%d')
         hesuan_col = next((c for c in df_processed.columns if '核算日期' in str(c)), None)
         if hesuan_col:
             dates = pd.to_datetime(df_processed[hesuan_col], errors='coerce')
             if not dates.isna().all():
-                max_date = dates.max()
-                max_date_str = f"{max_date.month}.{max_date.day}"
+                max_date_str = dates.max().strftime('%m%d')
 
         if '分析报告' in book.sheetnames: del book['分析报告']
         ws_report = book.create_sheet('分析报告')
@@ -504,3 +503,4 @@ def process_additional_margin_logic(uploaded_file, region_filter):
     except Exception as e:
         import traceback
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()], "", "", ""
+

@@ -1,17 +1,18 @@
-import pandas as pd
+# ==========================================
+# PART 1: 初始保证金处理逻辑 (从 app.py 抽离)
+# ==========================================
 import io
 import copy
 import math
 import re
 from datetime import datetime, timedelta
+import pandas as pd
 import openpyxl
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+import streamlit as st  # for st.session_state.card_bg
 
-# ============================================================================
-# PART 1: 初始保证金处理逻辑 (XSchushi.txt / app.py 原有逻辑)
-# ============================================================================
 
 def read_excel_safe(file_stream):
     try:
@@ -31,8 +32,7 @@ def read_excel_safe(file_stream):
             else:
                 raise ValueError("在文件前200行中无法找到包含'合同编号'的标题行，请检查文件格式。")
         return df
-    except Exception as e:
-        raise e
+    except Exception as e: raise e
 
 def fill_original_sheet_columns(ws_original, df_data):
     try:
@@ -40,10 +40,9 @@ def fill_original_sheet_columns(ws_original, df_data):
         col_type = get_column_by_name(ws_original, "逾期原因分类")
         col_client = get_column_by_name(ws_original, "客户")
         left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                             top=Side(style='thin'), bottom=Side(style='thin'))
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         if col_reason and col_type and col_client:
-            for i, row_cells in enumerate(ws_original.iter_rows(min_row=2), start=0):
+             for i, row_cells in enumerate(ws_original.iter_rows(min_row=2), start=0):
                 if i >= len(df_data): break
                 cell_reason = row_cells[col_reason - 1]
                 cell_type = row_cells[col_type - 1]
@@ -72,8 +71,7 @@ def fill_original_sheet_columns(ws_original, df_data):
                     new_align = copy.copy(cell.alignment)
                     new_align.vertical = 'center'
                     cell.alignment = new_align
-                else:
-                    cell.alignment = Alignment(vertical='center')
+                else: cell.alignment = Alignment(vertical='center')
     except Exception as e: pass
 
 def get_true_column_width(value):
@@ -87,12 +85,7 @@ def get_true_column_width(value):
     return width
 
 def auto_fit_columns(worksheet, min_width=10, max_width=60):
-    custom_widths = {
-        "序号": 6, "业务部门": 14, "合同编号": 28, "客户": 35, "品种": 10,
-        "合同数量": 14, "合同单价": 14, "合同金额": 16, "应收保证金日期": 18,
-        "应收保证金比例": 16, "应收保证金金额": 18, "已收定金/预收款": 18,
-        "逾期初始保证金金额": 22
-    }
+    custom_widths = {"序号": 6, "业务部门": 14, "合同编号": 28, "客户": 35, "品种": 10, "合同数量": 14, "合同单价": 14, "合同金额": 16, "应收保证金日期": 18, "应收保证金比例": 16, "应收保证金金额": 18, "已收定金/预收款": 18, "逾期初始保证金金额": 22}
     for col in worksheet.columns:
         column_letter = get_column_letter(col[0].column)
         header_text = str(col[0].value).strip() if col[0].value else ""
@@ -152,8 +145,7 @@ def get_column_by_name(worksheet, column_names):
     return None
 
 def beautify_sheet_common(ws, title_color="BDD7EE"):
-    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
-                         top=Side(style='thin'), bottom=Side(style='thin'))
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     header_fill = PatternFill(start_color=title_color, end_color=title_color, fill_type="solid")
     header_font = Font(color="000000", bold=True, size=11)
     light_fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
@@ -339,10 +331,10 @@ def create_long_term_overdue_sheet(workbook, df_today):
             return False, ""
 
         cond_be = df_today[reason_col].astype(str).str.contains(r'(B|款已到未认领|认领为货款|E|拟终止|作废合同)', regex=True, na=False)
-        mask_be = cond_be & (days_diff >= 60)
+        mask_be = cond_be & (days_diff >= 180)
 
         cond_c = df_today[reason_col].astype(str).str.contains(r'(C|无需收取保证金)', regex=True, na=False)
-        mask_c = cond_c & (days_diff >= 270)
+        mask_c = cond_c & (days_diff >= 365)
 
         df_target = df_today[mask_be | mask_c].copy()
 
@@ -408,10 +400,10 @@ def create_long_term_overdue_sheet(workbook, df_today):
 
         html_log = ""
         if log_lines:
-            html_log = '<div style="background-color: #FFF3E0; padding: 15px; border-radius: 8px; border-left: 5px solid #FF9800; margin-top: 15px; margin-bottom: 15px;">'
-            html_log += '<h4 style="color: #E65100; margin-top: 0; margin-bottom: 10px;">⏳ 长期未处理合同明细提醒</h4>'
+            html_log = f'<div style="background: {st.session_state.card_bg}; padding: 18px 22px; border-radius: 20px; border: 2.5px solid #e59266; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.15);">'
+            html_log += '<h4 style="color: #794f27; margin-top: 0; margin-bottom: 10px;">⏳ 长期未处理合同明细提醒</h4>'
             for line in log_lines:
-                html_log += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{line}</p>'
+                html_log += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #725d42;">{line}</p>'
             html_log += '</div>'
 
         if "应收保证金日期" in df_target.columns:
@@ -449,7 +441,7 @@ def create_long_term_overdue_sheet(workbook, df_today):
 
     except Exception as e:
         return False, f"<div style='color:red;'>生成长期未处理明细出错: {str(e)}</div>"
-
+        
 def process_margin_deposit_logic(current_file, prev_file):
     try:
         book = openpyxl.load_workbook(current_file)
@@ -476,8 +468,11 @@ def process_margin_deposit_logic(current_file, prev_file):
                 df_today.loc[mask_empty & (df_today[clause_col] == "否"), ["逾期具体原因_新", "逾期原因分类_新"]] = ["合同未约定收取保证金", "C无需收取保证金：指政策性业务、对养殖户销售业务、分合同、公司批准免收保证金客户的。此类要写明不收取保证金的具体原因。"]
         temp_stream.seek(0)
         book = openpyxl.load_workbook(temp_stream)
+        
+        # 修复点 1：清理时带上长期表
         for s in ["WSBZJQKB_Processed", "A类逾期明细", "A类逾期明细汇总", "长期未处理合同明细"]:
             if s in book.sheetnames: del book[s]
+            
         ws_proc = book.create_sheet("WSBZJQKB_Processed")
         for r in dataframe_to_rows(df_today, index=False, header=True): ws_proc.append(r)
         df_A = df_today[df_today["逾期原因分类_新"] == "A实际已逾期：指未按合同约定及时足额支付初始保证金。"].copy()
@@ -486,14 +481,12 @@ def process_margin_deposit_logic(current_file, prev_file):
         clean_and_organize_A_sheet(ws_A)
         optimize_A_sheet_formatting(ws_A)
         
-        success_long, log_long = create_long_term_overdue_sheet(book, df_today)
+        # 修复点 2：调用长期表格生成逻辑
+        _, log_long = create_long_term_overdue_sheet(book, df_today)
         
         today_str = datetime.now().strftime("%Y.%m.%d")
-        success, logs = create_A_summary_sheet(book, ws_A, today_str)
+        _, logs = create_A_summary_sheet(book, ws_A, today_str)
         
-        if log_long:
-            logs.append(log_long)
-
         # 查找对照日已逾期A类合同在今日报表中完全消失的合同
         prev_filename = prev_file.name if hasattr(prev_file, 'name') else ''
         m = re.search(r'(\d{1,2})\.(\d{1,2})', prev_filename)
@@ -520,8 +513,8 @@ def process_margin_deposit_logic(current_file, prev_file):
                 disappeared_rows.append(row)
 
         if disappeared_rows:
-            html_disappeared = '<div style="background-color: #FFF0F0; padding: 15px; border-radius: 8px; border-left: 5px solid #DC3545; margin-top: 15px; margin-bottom: 15px;">'
-            html_disappeared += '<h4 style="color: #A71D2A; margin-top: 0; margin-bottom: 10px;">🔴 前一日已回款合同明细</h4>'
+            html_disappeared = f'<div style="background: {st.session_state.card_bg}; padding: 18px 22px; border-radius: 20px; border: 2.5px solid #e05a5a; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.15);">'
+            html_disappeared += '<h4 style="color: #794f27; margin-top: 0; margin-bottom: 10px;">🔴 前一日已回款合同明细</h4>'
             for row in disappeared_rows:
                 dept = str(row.get('业务部门', '')).strip()
                 cid = str(row.get('合同编号', '')).strip()
@@ -535,13 +528,18 @@ def process_margin_deposit_logic(current_file, prev_file):
                         date_str = str(date_val)
                 else:
                     date_str = ''
-                html_disappeared += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{dept}，{cid}，{client}，应收日期{date_str}</p>'
+                html_disappeared += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #725d42;">{dept}，{cid}，{client}，应收日期{date_str}</p>'
             html_disappeared += '</div>'
             logs.append(html_disappeared)
+
+        # 修复点 3：把长期的日志拼接给前端网页展示
+        if log_long:
+            logs.append(log_long)
 
         if "WSBZJQKB" in book.sheetnames: fill_original_sheet_columns(book["WSBZJQKB"], df_today)
         if "WSBZJQKB_Processed" in book.sheetnames: del book["WSBZJQKB_Processed"]
         
+        # 修复点 4：强制将A类逾期明细挪到第一顺位（Sheet 0）
         if "A类逾期明细" in book.sheetnames:
             idx = book.sheetnames.index("A类逾期明细")
             if idx != 0:
@@ -554,3 +552,4 @@ def process_margin_deposit_logic(current_file, prev_file):
     except Exception as e:
         import traceback
         return None, [f"❌ 处理出错: {str(e)}", traceback.format_exc()]
+
