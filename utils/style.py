@@ -66,22 +66,18 @@ def apply_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
-def display_pretty_report(title, report_text, bg_color="#ffffff", bold_first_para=False):
-    """
-    恢复为现代、清爽的商务卡片风格（去除了木质厚边框）
-    """
+def display_pretty_report(title, report_text, bold_first_para=False):
     if not report_text: return
 
-    # 颜色映射：确保传入的底色柔和清爽
-    if bg_color == "#eef5ff": bg_color = "#F4F9FF"
-    if bg_color == "#fff8e6": bg_color = "#FFFCF2"
+    # 从 session state 获取主题对应的卡片色板
+    card_bg = st.session_state.get("card_bg", "rgb(247, 243, 223)")
+    card_border = st.session_state.get("card_border", "#c4b89e")
 
-    # 采用柔和阴影与左侧高亮条的现代风格
     html_content = f"""
-    <div style="background-color: {bg_color}; padding: 20px 25px; border-radius: 8px;
-                border: 1px solid #eaeaea; border-left: 5px solid #59C19A;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.04); margin-top: 15px; margin-bottom: 25px;">
-        <h4 style="color: #2c3e50; margin-top: 0; margin-bottom: 15px; font-weight: 800; font-size: 1.15rem;">{title}</h4>
+    <div style="background: {card_bg}; padding: 20px 25px; border-radius: 20px;
+                border: 2.5px solid {card_border};
+                box-shadow: 0 4px 10px rgba(107, 92, 67, 0.12); margin-top: 15px; margin-bottom: 25px;">
+        <h4 style="color: #794f27; margin-top: 0; margin-bottom: 15px; font-weight: 800; font-size: 1.15rem;">{title}</h4>
     """
 
     lines = [line.strip() for line in report_text.split('\n') if line.strip()]
@@ -89,21 +85,18 @@ def display_pretty_report(title, report_text, bg_color="#ffffff", bold_first_par
     is_first_para = True
     for line in lines:
         if line.endswith("：") or line.endswith(":"):
-            # 标题部分：现代深灰蓝
-            html_content += f"<div style='font-weight: 700; margin-top: 15px; margin-bottom: 8px; color: #34495e; font-size: 1.05rem;'>{line}</div>"
+            html_content += f"<div style='font-weight: 700; margin-top: 15px; margin-bottom: 8px; color: #794f27; font-size: 1.05rem;'>{line}</div>"
             is_first_para = False
         elif line.startswith("•") or re.match(r'^\d+、', line):
-            # 列表项：保留红黄等严重逾期的专业警示色
             if "严重逾期" in line or "重点关注" in line or "逾期60天以上" in line:
-                line = line.replace("严重逾期", "<span style='color: #d9534f; font-weight: 600;'>严重逾期</span>")
-                line = line.replace("重点关注", "<span style='color: #f0ad4e; font-weight: 600;'>重点关注</span>")
-                line = line.replace("逾期60天以上", "<span style='color: #c9302c; font-weight: 600;'>逾期60天以上</span>")
-            html_content += f"<div style='margin-left: 15px; margin-bottom: 6px; color: #555555; line-height: 1.7;'>{line}</div>"
+                line = line.replace("严重逾期", "<span style='color: #e05a5a; font-weight: 600;'>严重逾期</span>")
+                line = line.replace("重点关注", "<span style='color: #e59266; font-weight: 600;'>重点关注</span>")
+                line = line.replace("逾期60天以上", "<span style='color: #e05a5a; font-weight: 600;'>逾期60天以上</span>")
+            html_content += f"<div style='margin-left: 15px; margin-bottom: 6px; color: #725d42; line-height: 1.7;'>{line}</div>"
             is_first_para = False
         else:
-            # 正文内容
-            weight = "700" if (is_first_para and bold_first_para) else "400"
-            color = "#2c3e50" if (is_first_para and bold_first_para) else "#444444"
+            weight = "700" if (is_first_para and bold_first_para) else "500"
+            color = "#794f27" if (is_first_para and bold_first_para) else "#725d42"
             html_content += f"<div style='margin-bottom: 10px; color: {color}; line-height: 1.7; font-weight: {weight};'>{line}</div>"
             is_first_para = False
 
