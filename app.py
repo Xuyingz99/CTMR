@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import random
 import warnings
 import os
 from datetime import datetime
@@ -51,7 +50,8 @@ THEMES = {
 
 # 初始化 Session State 中的当前主题（首次加载随机二选一，后续 rerun 保持稳定）
 if "current_theme" not in st.session_state:
-    st.session_state.current_theme = random.choice(list(THEMES.keys()))
+    themes = list(THEMES.keys())
+    st.session_state.current_theme = themes[int(datetime.now().timestamp() * 1000) % len(themes)]
 
 # 提取当前主题的 CSS 变量
 current_theme_vars = THEMES[st.session_state.current_theme]
