@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import copy
 import math
+import random
 import warnings
 import re
 import os
@@ -31,35 +32,33 @@ st.set_page_config(
 # 🎨 动态主题配置引擎
 # ==========================================
 THEMES = {
-    "🏝️ 狸克海岛 (默认)": {
+    "🏝️ 狸克海岛": {
         "--ac-bg": "#F9F6ED",         "--ac-text": "#604F43",
         "--ac-green": "#59C19A",      "--ac-green-dark": "#439E7C",
         "--ac-yellow": "#F7D273",     "--ac-yellow-dark": "#D4A93E",
-        "--ac-wood": "#D2BA99",       "--ac-card": "#FFFFFF"
+        "--ac-wood": "#D2BA99",       "--ac-card": "#FFFFFF",
+        "--ac-info-bg": "#FFF8E6",
+        "--ac-card-bg": "rgb(247, 243, 223)",  "--ac-card-border": "#c4b89e",
+        "--ac-bg-img": "linear-gradient(rgba(249, 246, 237, 0.92), rgba(249, 246, 237, 0.92)), url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/demo/img/menu_bg.svg')",
+        "--ac-bg-size": "220px auto",
+        "--ac-bg-position": "top left"
     },
-    "🌸 樱花季 (春日)": {
-        "--ac-bg": "#FFF5F7",         "--ac-text": "#6E4A55",
-        "--ac-green": "#F7A8B8",      "--ac-green-dark": "#D98A9A",
-        "--ac-yellow": "#FFEBF0",     "--ac-yellow-dark": "#F4C2C2",
-        "--ac-wood": "#E8CDD5",       "--ac-card": "#FFFFFF"
-    },
-    "🌊 冲浪海滩 (夏日)": {
+    "🌊 冲浪海滩": {
         "--ac-bg": "#F2F9FF",         "--ac-text": "#2C4C5E",
         "--ac-green": "#6AC4D9",      "--ac-green-dark": "#4A9EAF",
         "--ac-yellow": "#E6F4F1",     "--ac-yellow-dark": "#8BD3E6",
-        "--ac-wood": "#B5C8D6",       "--ac-card": "#FFFFFF"
-    },
-    "🍁 枫叶森林 (秋日)": {
-        "--ac-bg": "#FCF6F0",         "--ac-text": "#5C3A21",
-        "--ac-green": "#E0855A",      "--ac-green-dark": "#C2673E",
-        "--ac-yellow": "#FAEDD4",     "--ac-yellow-dark": "#E6C57A",
-        "--ac-wood": "#D6BA9C",       "--ac-card": "#FFFFFF"
+        "--ac-wood": "#B5C8D6",       "--ac-card": "#FFFFFF",
+        "--ac-info-bg": "#EAF4FC",
+        "--ac-card-bg": "#F5FAFE",    "--ac-card-border": "#B5C8D6",
+        "--ac-bg-img": "radial-gradient(rgba(106, 196, 217, 0.2) 2px, transparent 2px), radial-gradient(rgba(106, 196, 217, 0.1) 2px, transparent 2px)",
+        "--ac-bg-size": "30px 30px",
+        "--ac-bg-position": "0 0, 15px 15px"
     }
 }
 
-# 初始化 Session State 中的当前主题
+# 初始化 Session State 中的当前主题（首次加载随机二选一，后续 rerun 保持稳定）
 if "current_theme" not in st.session_state:
-    st.session_state.current_theme = "🏝️ 狸克海岛 (默认)"
+    st.session_state.current_theme = random.choice(list(THEMES.keys()))
 
 # 提取当前主题的 CSS 变量
 current_theme_vars = THEMES[st.session_state.current_theme]
@@ -78,14 +77,31 @@ st.markdown(f"""
 {css_vars_string}
     }}
 
-    /* 全局背景与字体 (保留可爱的波点底纹与白色小箭头) */
+    /* 全局背景与字体 (动态调用主题底纹与色盘) */
     .stApp {{
-        background-color: var(--ac-bg);
-        background-image: radial-gradient(rgba(210, 186, 153, 0.15) 2px, transparent 2px);
-        background-size: 24px 24px;
+        background-color: var(--ac-bg) !important;
+        background-image: var(--ac-bg-img) !important;
+        background-size: var(--ac-bg-size) !important;
+        background-position: var(--ac-bg-position) !important;
+        background-attachment: fixed !important;
         font-family: 'Nunito', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
         color: var(--ac-text) !important;
         cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), auto !important;
+    }}
+
+    /* 关键修复：强制让 Streamlit 的顶层容器与内部视图透明，确保底层底纹完全暴露 */
+    [data-testid="stAppViewContainer"],
+    [data-testid="stHeader"] {{
+        background: transparent !important;
+    }}
+
+    /* 缩紧 Streamlit 默认的全局外围边距，让 UI 更紧凑 */
+    [data-testid="block-container"] {{
+        padding-top: 1.2rem !important;
+        padding-bottom: 2rem !important;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
+        max-width: 96% !important;
     }}
 
     /* 强制所有交互元素及其内部文字使用动森光标 */
@@ -107,7 +123,7 @@ st.markdown(f"""
     .sub-title {{ font-size: 1.1rem; color: var(--ac-wood) !important; font-weight: 700; letter-spacing: 2px; margin-top: 1rem; }}
     .greeting-text {{ font-size: 1.6rem; font-weight: 700; color: var(--ac-text); text-align: center; margin-bottom: 2rem; }}
 
-    /* 2. 顶部功能切换按钮 (清爽微投影卡片) */
+    /* 2. 顶部功能切换按钮 (恢复原版清爽微投影卡片) */
     div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
     div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
@@ -117,7 +133,7 @@ st.markdown(f"""
         background: var(--ac-card); border: 1px solid #E5E7EB !important; border-radius: 12px !important;
         padding: 10px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
         flex: 0 0 180px !important; width: 180px !important; height: 85px !important; box-sizing: border-box !important;
-        transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; text-align: center;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; justify-content: center; text-align: center;
         font-weight: 700; color: var(--ac-text) !important; font-size: 0.95rem !important; line-height: 1.3 !important;
     }}
     div[role="radiogroup"] label[data-checked="true"] {{
@@ -126,25 +142,81 @@ st.markdown(f"""
     }}
     div[role="radiogroup"] label:hover:not([data-checked="true"]) {{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important; }}
 
-    /* 3. 注意事项/信息框 (清爽侧边条) */
-    .info-box {{
-        background: var(--ac-card); border: 1px solid #E9ECEF; border-left: 4px solid var(--ac-green);
-        padding: 18px 25px; border-radius: 8px; margin-bottom: 25px; color: var(--ac-text);
-        font-size: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.03); line-height: 1.8;
+    /* 2.5 动森风格复选框 (专门针对逾期销售周报的 checkbox) */
+    [data-testid="stCheckbox"] label > div:first-child {{
+        background: var(--ac-card-bg) !important;
+        border: 2px solid var(--ac-card-border) !important;
+        border-radius: 8px !important;
+        width: 22px !important; height: 22px !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
     }}
-    .info-title {{ font-weight: 900; color: var(--ac-green); font-size: 1.15rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }}
+    /* 选中状态变成主题绿 */
+    [data-testid="stCheckbox"] label[data-checked="true"] > div:first-child {{
+        background: var(--ac-green) !important;
+        border-color: var(--ac-green-dark) !important;
+    }}
+    /* 确保里面的原生对勾为白色 */
+    [data-testid="stCheckbox"] label > div:first-child svg {{
+        fill: white !important;
+        stroke: white !important;
+    }}
 
-    /* 4. 文件上传区域 */
-    [data-testid="stFileUploader"] section {{
-        border-radius: 12px; background-color: var(--ac-card); border: 2px dashed var(--ac-green); padding: 1.5rem; transition: all 0.3s;
+    /* 3. 注意事项/信息框 (有机形态与 NookPhone 色卡) */
+    .info-box {{
+        background: var(--ac-info-bg) !important;
+        border: 2.5px solid var(--ac-wood) !important; border-left: none !important;
+        padding: 20px 25px;
+        border-radius: 40px 35px 45px 38px / 38px 45px 35px 40px !important;
+        margin-bottom: 25px; color: var(--ac-text) !important;
+        font-size: 1rem; font-weight: 500;
+        box-shadow: 0 4px 10px rgba(107, 92, 67, 0.08) !important; line-height: 1.8;
     }}
-    [data-testid="stFileUploader"] section:hover {{ background-color: var(--ac-yellow); }}
+    .info-title {{ font-weight: 800; color: var(--ac-green); font-size: 1.15rem; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }}
+
+    /* 4. NookPhone 圆润文件上传区 */
+    [data-testid="stFileUploader"] section {{
+        border-radius: 20px !important; background-color: var(--ac-card) !important;
+        border: 3px dashed var(--ac-green) !important;
+        padding: 1rem 0.5rem !important; /* 收紧内边距，给双列留出空间 */
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }}
+    [data-testid="stFileUploader"] section:hover {{
+        background-color: var(--ac-info-bg) !important;
+        border-color: var(--ac-green-dark) !important;
+        transform: translateY(-4px) !important;
+        box-shadow: 0 8px 24px rgba(114, 93, 66, 0.15) !important;
+    }}
+
+    /* 4.1 强制穿透修改上传区内部文字与图标大小 (防止溢出) */
+    [data-testid="stFileUploader"] section * {{
+        font-size: 0.85rem !important;
+    }}
+    [data-testid="stFileUploader"] section small {{
+        font-size: 0.7rem !important;
+    }}
+    [data-testid="stFileUploader"] section svg {{
+        width: 30px !important; height: 30px !important; margin-bottom: 5px !important;
+    }}
+
+    /* 4.5 NookPhone 胶囊化文本输入框 */
+    [data-testid="stTextInput"] [data-baseweb="input"] {{
+        border-radius: 50px !important;
+        border: 2.5px solid var(--ac-wood) !important;
+        background-color: var(--ac-card) !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        overflow: hidden;
+    }}
+    [data-testid="stTextInput"] [data-baseweb="input"]:focus-within {{
+        border-color: #ffcc00 !important;
+        box-shadow: 0 3px 0 0 #e0b800, 0 0 0 3px rgba(255,204,0,0.15) !important;
+    }}
+    [data-testid="stTextInput"] input {{ color: var(--ac-text) !important; font-weight: 600 !important; }}
 
     /* 5. 核心操作与下载按钮 */
     div.stButton > button, div[data-testid="stDownloadButton"] > button {{
         width: 100%; height: 55px; border-radius: 12px; font-size: 1.15rem; font-weight: 700;
         background-color: var(--ac-green); color: white !important; border: none;
-        box-shadow: 0 6px 0 var(--ac-green-dark); transition: all 0.15s ease;
+        box-shadow: 0 6px 0 var(--ac-green-dark); transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
     }}
     div.stButton > button:hover, div[data-testid="stDownloadButton"] > button:hover {{ background-color: var(--ac-green); transform: translateY(2px); box-shadow: 0 4px 0 var(--ac-green-dark); opacity: 0.9; }}
     div.stButton > button:active, div[data-testid="stDownloadButton"] > button:active {{ transform: translateY(6px); box-shadow: none; }}
@@ -153,7 +225,7 @@ st.markdown(f"""
     [data-testid="stPills"] {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }}
     [data-testid="stPills"] button {{
         border-radius: 12px !important; border: 1px solid var(--ac-wood) !important; background: var(--ac-card) !important;
-        color: var(--ac-text) !important; padding: 6px 20px !important; font-size: 1rem !important; font-weight: 700 !important; transition: all 0.2s ease;
+        color: var(--ac-text) !important; padding: 6px 20px !important; font-size: 1rem !important; font-weight: 700 !important; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }}
     [data-testid="stPills"] button[aria-selected="true"] {{ background: var(--ac-green) !important; color: white !important; border-color: var(--ac-green-dark) !important; box-shadow: 0 4px 0 var(--ac-green-dark); transform: translateY(-2px); }}
 
@@ -180,6 +252,7 @@ st.markdown(f"""
     }}
 
     #MainMenu, header, footer {{ visibility: hidden; }}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -569,10 +642,10 @@ def create_long_term_overdue_sheet(workbook, df_today):
 
         html_log = ""
         if log_lines:
-            html_log = '<div style="background-color: #FFF3E0; padding: 15px; border-radius: 8px; border-left: 5px solid #FF9800; margin-top: 15px; margin-bottom: 15px;">'
-            html_log += '<h4 style="color: #E65100; margin-top: 0; margin-bottom: 10px;">⏳ 长期未处理合同明细提醒</h4>'
+            html_log = f'<div style="background: {st.session_state.card_bg}; padding: 18px 22px; border-radius: 20px; border: 2.5px solid #e59266; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.15);">'
+            html_log += '<h4 style="color: #794f27; margin-top: 0; margin-bottom: 10px;">⏳ 长期未处理合同明细提醒</h4>'
             for line in log_lines:
-                html_log += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{line}</p>'
+                html_log += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #725d42;">{line}</p>'
             html_log += '</div>'
 
         if "应收保证金日期" in df_target.columns:
@@ -651,15 +724,11 @@ def process_margin_deposit_logic(current_file, prev_file):
         optimize_A_sheet_formatting(ws_A)
         
         # 修复点 2：调用长期表格生成逻辑
-        success_long, log_long = create_long_term_overdue_sheet(book, df_today)
+        _, log_long = create_long_term_overdue_sheet(book, df_today)
         
         today_str = datetime.now().strftime("%Y.%m.%d")
-        success, logs = create_A_summary_sheet(book, ws_A, today_str)
+        _, logs = create_A_summary_sheet(book, ws_A, today_str)
         
-        # 修复点 3：把长期的日志拼接给前端网页展示
-        if log_long:
-            logs.append(log_long)
-
         # 查找对照日已逾期A类合同在今日报表中完全消失的合同
         prev_filename = prev_file.name if hasattr(prev_file, 'name') else ''
         m = re.search(r'(\d{1,2})\.(\d{1,2})', prev_filename)
@@ -686,8 +755,8 @@ def process_margin_deposit_logic(current_file, prev_file):
                 disappeared_rows.append(row)
 
         if disappeared_rows:
-            html_disappeared = '<div style="background-color: #FFF0F0; padding: 15px; border-radius: 8px; border-left: 5px solid #DC3545; margin-top: 15px; margin-bottom: 15px;">'
-            html_disappeared += '<h4 style="color: #A71D2A; margin-top: 0; margin-bottom: 10px;">🔴 前一日已回款合同明细</h4>'
+            html_disappeared = f'<div style="background: {st.session_state.card_bg}; padding: 18px 22px; border-radius: 20px; border: 2.5px solid #e05a5a; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.15);">'
+            html_disappeared += '<h4 style="color: #794f27; margin-top: 0; margin-bottom: 10px;">🔴 前一日已回款合同明细</h4>'
             for row in disappeared_rows:
                 dept = str(row.get('业务部门', '')).strip()
                 cid = str(row.get('合同编号', '')).strip()
@@ -701,9 +770,13 @@ def process_margin_deposit_logic(current_file, prev_file):
                         date_str = str(date_val)
                 else:
                     date_str = ''
-                html_disappeared += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #333;">{dept}，{cid}，{client}，应收日期{date_str}</p>'
+                html_disappeared += f'<p style="margin: 0 0 8px 0; font-size: 14px; color: #725d42;">{dept}，{cid}，{client}，应收日期{date_str}</p>'
             html_disappeared += '</div>'
             logs.append(html_disappeared)
+
+        # 修复点 3：把长期的日志拼接给前端网页展示
+        if log_long:
+            logs.append(log_long)
 
         if "WSBZJQKB" in book.sheetnames: fill_original_sheet_columns(book["WSBZJQKB"], df_today)
         if "WSBZJQKB_Processed" in book.sheetnames: del book["WSBZJQKB_Processed"]
@@ -1220,9 +1293,9 @@ def format_html_content_for_credit(text):
     list_html = ""
     for line in lines:
         if "情况如下：" in line or "【" in line:
-             list_html += f"<div style='font-weight: bold; margin-top: 8px; margin-bottom: 4px; color: #1f1f1f;'>{line.replace('**', '')}</div>"
+             list_html += f"<div style='font-weight: 700; margin-top: 8px; margin-bottom: 4px; color: #794f27;'>{line.replace('**', '')}</div>"
         else:
-             list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #333; line-height: 1.6;'>• {line}</div>"
+             list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #725d42; line-height: 1.6;'>• {line}</div>"
     return list_html
 
 # ==========================================
@@ -1230,6 +1303,11 @@ def format_html_content_for_credit(text):
 # ==========================================
 
 def main():
+    # 根据当前主题设置卡片色板（供全局 inline style 使用）
+    t = THEMES[st.session_state.current_theme]
+    st.session_state.card_bg = t["--ac-card-bg"]
+    st.session_state.card_border = t["--ac-card-border"]
+
     col_l, col_center, col_admin = st.columns([1, 6, 1])
     
     with col_center:
@@ -1270,8 +1348,8 @@ def main():
             if pwd == "xuyingzhe":
                 st.success("已授权")
 
-                st.markdown("""
-                    <div style="font-size: 0.75rem; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px; line-height: 1.5; border: 1px solid #e0e0e0;">
+                st.markdown(f"""
+                    <div style="font-size: 0.85rem; color: #725d42; background: {st.session_state.card_bg}; padding: 16px 20px; border-radius: 20px; margin-bottom: 10px; line-height: 1.6; border: 2.5px solid {st.session_state.card_border}; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
                         <b>📌 上传规范说明：</b><br>
                         1. <b>文件名称</b>：必须包含 <span style='color:#c9302c'>客户关系清单</span><br>
                         2. <b>表单名称</b>：必须有 <span style='color:#4d6bfe'>总</span>、<span style='color:#4d6bfe'>内部</span> 两个Sheet<br>
@@ -1322,7 +1400,7 @@ def main():
             "📈 初始保证金处理": "init_margin",
             "📉 追加保证金处理": "add_margin",
             "⏱️ 逾期销售处理": "overdue_sales",
-            "🛒 逾期采购处理": "overdue_purchase", # 【此处为本次新增菜单项】
+            "🛒 逾期采购处理": "overdue_purchase",
             "📊 信用风险管理日报": "credit_report"
         }
 
@@ -1370,7 +1448,13 @@ def main():
                                 if str(log).startswith("<div"):
                                     st.markdown(log, unsafe_allow_html=True)
                                 else:
-                                    st.info(log)
+                                    st.markdown(f"""
+                                    <div style="background: {st.session_state.card_bg}; padding: 16px 22px; border-radius: 20px;
+                                                border: 2.5px solid {st.session_state.card_border}; margin-bottom: 12px;
+                                                box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
+                                        <span style="color: #725d42; font-weight: 500; line-height: 1.7;">{log}</span>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                                 
                         else:
                             st.error("处理失败，请查看下方错误日志")
@@ -1391,7 +1475,7 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-            st.markdown('<div style="margin-bottom: 8px; font-weight: 600; color: #333;">选择报告生成范围</div>', unsafe_allow_html=True)
+            st.markdown('<div style="margin-bottom: 8px; font-weight: 700; color: #794f27;">选择报告生成范围</div>', unsafe_allow_html=True)
             region_options = ["中粮贸易", "沿海大区", "沿江大区", "内陆大区", "东北大区"]
             
             selection = st.pills("选择报告生成范围", region_options, default="中粮贸易", label_visibility="collapsed")
@@ -1419,9 +1503,9 @@ def main():
                             
                             c_a, c_b = st.columns(2)
                             with c_a:
-                                display_pretty_report(f"业务单位报告 ({selected_region})", report_a, "#eef5ff", bold_first_para=False)
+                                display_pretty_report(f"业务单位报告 ({selected_region})", report_a, bold_first_para=False)
                             with c_b:
-                                display_pretty_report(f"分客户报告 ({selected_region})", report_b, "#fff8e6", bold_first_para=False)
+                                display_pretty_report(f"分客户报告 ({selected_region})", report_b, bold_first_para=False)
                         else:
                             st.error("处理失败")
                             for l in logs: st.write(l)
@@ -1497,11 +1581,11 @@ def main():
 
                             if collection_text:
                                 st.markdown("### 📢 生成的通报文案")
-                                display_pretty_report("💬 催收提醒预览", collection_text, bg_color="#f8f9fa", bold_first_para=True)
+                                display_pretty_report("💬 催收提醒预览", collection_text, bold_first_para=True)
                         else:
                             st.error("❌ 处理失败，请检查文件格式是否符合要求。")
 
-        # --- 模块 4: 逾期采购处理 【本次新增的核心逻辑块】 ---
+        # --- 模块 4: 逾期采购处理 ---
         elif mode == "🛒 逾期采购处理":
             st.markdown("""
             <div class="info-box">
@@ -1562,7 +1646,7 @@ def main():
                             # 渲染展示在网页端的纯文本报告摘要，复用 style.py 内置的美化函数
                             if web_text:
                                 st.markdown("### 📢 采购情况通报")
-                                display_pretty_report("💬 逾期采购情况摘要", web_text, bg_color="#fff8e6", bold_first_para=True)
+                                display_pretty_report("💬 逾期采购情况摘要", web_text, bold_first_para=True)
                         else:
                             st.error("❌ 处理失败。")
                             for log in logs: st.write(log)
@@ -1593,7 +1677,7 @@ def main():
                             st.success("✅ 任务处理完成！")
                     
                             if word_text_dict:
-                                st.markdown("<h3 style='margin-top: 10px; margin-bottom: 20px; color: #1f1f1f;'>信用风险管理日报</h3>", unsafe_allow_html=True)
+                                st.markdown("<h3 style='margin-top: 10px; margin-bottom: 20px; color: #794f27;'>信用风险管理日报</h3>", unsafe_allow_html=True)
                                 
                                 center_themes = {
                                     "玉米": {"bg": "#eef5ff", "bd": "#d1e3ff", "bar": "#4d6bfe"},
@@ -1606,7 +1690,7 @@ def main():
                                     html_content = format_html_content_for_credit(content)
                                     
                                     st.markdown(f"""
-                                    <div style="background-color: {theme['bg']}; padding: 20px 25px; border-radius: 0 8px 8px 0; border: 1px solid {theme['bd']}; border-left: 4px solid {theme['bar']}; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
+                                    <div style="background-color: {theme['bg']}; padding: 20px 25px; border-radius: 20px; border: 2.5px solid {theme['bd']}; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.12);">
                                         {html_content}
                                     </div>
                                     """, unsafe_allow_html=True)
@@ -1648,28 +1732,31 @@ def main():
                 else:
                     st.warning("⚠️ 请先上传 Excel 文件！")
 
-    # 完美贯穿屏幕的底部风景线（增加了距离上方内容的 margin-top）
-    footer_html = (
-        "<div style='width: 100vw; margin-left: calc(-50vw + 50%); text-align: center; "
-        "margin-top: 180px; "
-        "padding-top: 60px; padding-bottom: 30px; position: relative; overflow: hidden;'>"
+    # 动森风格 Footer
+    current_theme = st.session_state.get("current_theme", "🏝️ 狸克海岛")
+    theme = THEMES[current_theme]
+    text_color = theme["--ac-text"]
+    if "狸克海岛" in current_theme:
+        footer_bg = "https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/footer/footer-tree.webp"
+        footer_h = "120px"
+        footer_props = "bottom center / cover no-repeat"
+    else:
+        footer_bg = "https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/footer/footer-sea.svg"
+        footer_h = "80px"
+        footer_props = "center / contain no-repeat"
 
-        ""
-        "<div style=\"height: 15px; width: 110%; margin-left: -5%; "
-        "background: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/dividers/wave-yellow.svg') repeat-x center; "
-        "opacity: 0.6; margin-bottom: 25px;\"></div>"
-
-        ""
-        "<div style=\"display: flex; justify-content: center; align-items: center; gap: 12px; "
-        "color:#A4937A; font-weight: 800; font-size: 1.05rem; letter-spacing: 1px;\">"
-
-        "<span style=\"font-size: 1.5rem;\">\U0001F334</span>"
-        "&copy; 2026 Take It Easy "
-        "<span style=\"font-size: 1.5rem; transform: scaleX(-1); display: inline-block;\">\U0001F334</span>"
-
-        "</div></div>"
-    )
-    st.markdown(footer_html, unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="
+        width: 100vw; margin-left: calc(-50vw + 50%); margin-top: 150px;
+        height: {footer_h};
+        background: url('{footer_bg}') {footer_props}; position: relative; display: flex;
+        align-items: flex-end; justify-content: center; padding-bottom: 20px; overflow: hidden;
+    ">
+        <div style="color:{text_color}; font-weight: 800; font-size: 1.05rem; letter-spacing: 1px; text-shadow: 1px 1px 0px #fff;">
+            &copy; 2026 Take It Easy
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
