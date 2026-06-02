@@ -388,7 +388,7 @@ def main():
             
             if st.button("🚀 开始处理 / Analyze"):
                 if current_file and prev_file:
-                    with st.spinner("🤖 正在进行数据比对与清洗，请稍候..."):
+                    with st.spinner("正在进行数据比对与清洗，请稍候..."):
                         excel_data, report_logs = process_margin_deposit_logic(current_file, prev_file)
                         
                         if excel_data:
@@ -446,7 +446,7 @@ def main():
 
             if st.button("🚀 生成报告 / Generate Report"):
                 if uploaded_file:
-                    with st.spinner(f"🤖 正在为【{selected_region}】生成专属报告..."):
+                    with st.spinner(f"正在为【{selected_region}】生成专属报告..."):
                         output_file, logs, report_a, report_b, max_date_str = process_additional_margin_logic(uploaded_file, selected_region)
                         
                         if output_file:
@@ -505,7 +505,7 @@ def main():
                 if not batch_files and not once_files:
                     st.warning("⚠️ 请至少在一个文件栏中上传数据文件！")
                 else:
-                    with st.spinner("🤖 正在高速运算并生成报告中..."):
+                    with st.spinner("正在高速运算并生成报告中..."):
                         excel_io, word_io, collection_text, logs = process_overdue_sales(batch_files, once_files, need_report)
                         
                         if excel_io:
@@ -569,7 +569,7 @@ def main():
                 if not cg_files:
                     st.warning("⚠️ 请先上传数据文件！")
                 else:
-                    with st.spinner("🤖 正在智能比对与合并多表，生成极速简报中..."):
+                    with st.spinner("正在智能比对与合并多表，生成极速简报中..."):
                         excel_io, doc_io, web_text, logs = process_overdue_purchase(cg_files)
                         
                         if excel_io:
@@ -629,7 +629,7 @@ def main():
             
             if st.button("🚀 生成报告与导出文件 / Generate"):
                 if uploaded_file:
-                    with st.spinner("🤖 正在解析 Excel 数据并渲染跨平台文件，请稍候..."):
+                    with st.spinner("正在解析 Excel 数据并渲染跨平台文件，请稍候..."):
                         word_bytes, word_text_dict, export_files, logs, env_msg = process_credit_report(uploaded_file)
                         
                         st.info(f"💡 {env_msg}")
