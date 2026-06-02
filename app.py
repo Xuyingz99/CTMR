@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import warnings
 import os
@@ -200,8 +200,8 @@ st.markdown(f"""
         overflow: hidden;
     }}
     [data-testid="stTextInput"] [data-baseweb="input"]:focus-within {{
-        border-color: #ffcc00 !important;
-        box-shadow: 0 3px 0 0 #e0b800, 0 0 0 3px rgba(255,204,0,0.15) !important;
+        border-color: var(--ac-green) !important;
+        box-shadow: 0 3px 0 0 var(--ac-green-dark), 0 0 0 3px rgba(89, 193, 154, 0.15) !important;
     }}
     [data-testid="stTextInput"] input {{ color: var(--ac-text) !important; font-weight: 600 !important; }}
 
@@ -246,6 +246,71 @@ st.markdown(f"""
 
     #MainMenu, header, footer {{ visibility: hidden; }}
 
+    /* 7. 动森风格原生弹窗 (Modal) 美化 */
+    [data-testid="stModal"] > div {{
+        background: var(--ac-card) !important;
+        border: 3px solid var(--ac-green) !important;
+        border-radius: 40px 35px 45px 38px / 38px 45px 35px 40px !important; /* 动森有机圆角 */
+        padding: 10px !important;
+        box-shadow: 0 8px 24px rgba(107, 92, 67, 0.2) !important;
+    }}
+    /* 修改弹窗标题栏颜色和字体 */
+    [data-testid="stModal"] header {{
+        background: transparent !important;
+    }}
+    [data-testid="stModal"] h2 {{
+        color: var(--ac-green) !important;
+        font-weight: 800 !important;
+        font-size: 1.5rem !important;
+        text-shadow: 2px 2px 0px #fff !important;
+    }}
+    /* 弹窗内的关闭按钮 */
+    [data-testid="stModal"] header button {{
+        color: var(--ac-wood) !important;
+    }}
+    [data-testid="stModal"] header button:hover {{
+        background-color: var(--ac-yellow) !important;
+        color: white !important;
+    }}
+
+    /* 8. 修复：精准锁定设置面板内的按钮 (Small 尺寸 + Ghost 幽灵形态) */
+    [data-testid="stExpanderDetails"] button {{
+        height: 36px !important; /* 稍微加到36px，保证中文和Emoji不被裁切 */
+        padding: 0 16px !important;
+        border-radius: 12px !important;
+        background: transparent !important; /* Ghost 核心：透明底色 */
+        border: 2px solid var(--ac-text) !important;
+        box-shadow: 0 3px 0 0 var(--ac-wood) !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        margin-top: 5px !important;
+    }}
+
+    /* 强力覆盖内部文字的样式，防止被 Streamlit 原生覆盖 */
+    [data-testid="stExpanderDetails"] button p {{
+        font-size: 13.5px !important;
+        font-weight: 700 !important;
+        color: var(--ac-text) !important;
+        margin: 0 !important;
+    }}
+
+    /* Hover 状态：加深边框与文字，铺一层极浅的主题色背景 */
+    [data-testid="stExpanderDetails"] button:hover {{
+        background: var(--ac-info-bg) !important;
+        border-color: var(--ac-text) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 0 0 var(--ac-wood) !important;
+    }}
+
+    [data-testid="stExpanderDetails"] button:hover p {{
+        color: var(--ac-text) !important;
+    }}
+
+    /* Active 点击状态：真实的按压反馈 */
+    [data-testid="stExpanderDetails"] button:active {{
+        transform: translateY(2px) !important;
+        box-shadow: 0 1px 0 0 var(--ac-wood) !important;
+    }}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -258,6 +323,65 @@ def format_html_content_for_credit(text):
         else:
              list_html += f"<div style='margin-left: 10px; margin-bottom: 4px; color: #725d42; line-height: 1.6;'>• {line}</div>"
     return list_html
+
+# ==========================================
+# 动森风格弹窗：核心数据更新 Modal
+# ==========================================
+@st.dialog("🔒 核心数据更新")
+def core_data_update_modal():
+    card_bg = st.session_state.get("card_bg", "#FFFFFF")
+    card_border = st.session_state.get("card_border", "#c4b89e")
+
+    st.markdown(f"""
+        <div style="font-size: 0.85rem; color: #725d42; background: {card_bg}; padding: 16px 20px; border-radius: 20px; margin-bottom: 10px; line-height: 1.6; border: 2.5px solid {card_border}; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
+            <b>📌 上传规范说明：</b><br>
+            1. <b>文件名称</b>：必须包含 <span style='color:#c9302c'>客户关系清单</span><br>
+            2. <b>表单名称</b>：必须有 <span style='color:#4d6bfe'>总</span>、<span style='color:#4d6bfe'>内部</span> 两个Sheet<br>
+            3. <b>[总]</b> 列名需含：客户名称、客户所属集团<br>
+            4. <b>[内部]</b> 列名需含：客户名称、所属专业化公司
+        </div>
+    """, unsafe_allow_html=True)
+
+    pwd = st.text_input("Admin", type="password", placeholder="请输入通行证以解锁上传区...", label_visibility="collapsed")
+
+    if pwd == "xuyingzhe":
+        st.success("✅ 身份验证通过")
+        new_mapping_file = st.file_uploader("上传清单", type=['xlsx'], label_visibility="collapsed")
+
+        if new_mapping_file:
+            if st.button("☁️ 确认并云端同步", use_container_width=True):
+                with st.spinner("校验并同步中..."):
+                    try:
+                        df_total = pd.read_excel(new_mapping_file, sheet_name='总')
+                        df_internal = pd.read_excel(new_mapping_file, sheet_name='内部')
+                        if '客户名称' not in df_total.columns or '客户所属集团' not in df_total.columns:
+                            st.error("❌ 拦截：【总】表缺少关键列！")
+                        elif '客户名称' not in df_internal.columns or '所属专业化公司' not in df_internal.columns:
+                            st.error("❌ 拦截：【内部】表缺少关键列！")
+                        else:
+                            from github import Github
+                            gh_token = st.secrets["GITHUB_TOKEN"]
+                            g = Github(gh_token)
+                            repo = g.get_repo("Xuyingz99/CTMR")
+
+                            new_mapping_file.seek(0)
+                            content_bytes = new_mapping_file.read()
+
+                            file_path = "客户关系清单.xlsx"
+                            try:
+                                contents = repo.get_contents(file_path)
+                                repo.update_file(contents.path, "Admin: 网页端在线热更新客户关系清单", content_bytes, contents.sha)
+                            except Exception:
+                                repo.create_file(file_path, "Admin: 网页端创建客户关系清单", content_bytes)
+
+                            st.success("🎉 云端更新成功！网页即将自动刷新。")
+                            import time
+                            time.sleep(2)
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ 更新失败: {str(e)}")
+    elif pwd != "":
+        st.error("❌ 密码错误")
 
 # ==========================================
 # 主界面逻辑
@@ -303,54 +427,9 @@ def main():
             st.markdown("<hr style='margin: 10px 0; border: 1px solid #eaeaea;'>", unsafe_allow_html=True)
 
             # --- 🔒 私密功能：核心数据更新 ---
-            st.markdown("<div style='font-size:0.85rem; font-weight:bold; color:var(--ac-text); margin-bottom:8px;'>🔒 核心数据更新</div>", unsafe_allow_html=True)
-            pwd = st.text_input("Admin", type="password", placeholder="请输入通行证...", label_visibility="collapsed")
-
-            if pwd == "xuyingzhe":
-                st.success("已授权")
-
-                st.markdown(f"""
-                    <div style="font-size: 0.85rem; color: #725d42; background: {st.session_state.card_bg}; padding: 16px 20px; border-radius: 20px; margin-bottom: 10px; line-height: 1.6; border: 2.5px solid {st.session_state.card_border}; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
-                        <b>📌 上传规范说明：</b><br>
-                        1. <b>文件名称</b>：必须包含 <span style='color:#c9302c'>客户关系清单</span><br>
-                        2. <b>表单名称</b>：必须有 <span style='color:#4d6bfe'>总</span>、<span style='color:#4d6bfe'>内部</span> 两个Sheet<br>
-                        3. <b>[总]</b> 列名需含：客户名称、客户所属集团<br>
-                        4. <b>[内部]</b> 列名需含：客户名称、所属专业化公司
-                    </div>
-                """, unsafe_allow_html=True)
-
-                new_mapping_file = st.file_uploader("上传清单", type=['xlsx'], label_visibility="collapsed")
-                if new_mapping_file:
-                    if st.button("☁️ 云端同步", use_container_width=True):
-                        with st.spinner("校验并同步中..."):
-                            try:
-                                df_total = pd.read_excel(new_mapping_file, sheet_name='总')
-                                df_internal = pd.read_excel(new_mapping_file, sheet_name='内部')
-                                if '客户名称' not in df_total.columns or '客户所属集团' not in df_total.columns:
-                                    st.error("❌ 拦截：【总】表缺少关键列！")
-                                elif '客户名称' not in df_internal.columns or '所属专业化公司' not in df_internal.columns:
-                                    st.error("❌ 拦截：【内部】表缺少关键列！")
-                                else:
-                                    from github import Github
-                                    gh_token = st.secrets["GITHUB_TOKEN"]
-                                    g = Github(gh_token)
-                                    repo = g.get_repo("Xuyingz99/CTMR")
-
-                                    new_mapping_file.seek(0)
-                                    content_bytes = new_mapping_file.read()
-
-                                    file_path = "客户关系清单.xlsx"
-                                    try:
-                                        contents = repo.get_contents(file_path)
-                                        repo.update_file(contents.path, "Admin: 网页端在线热更新客户关系清单", content_bytes, contents.sha)
-                                    except Exception:
-                                        repo.create_file(file_path, "Admin: 网页端创建客户关系清单", content_bytes)
-
-                                    st.success("🎉 云端更新成功！网页即将刷新。")
-                            except Exception as e:
-                                st.error(f"❌ 更新失败: {str(e)}")
-            elif pwd != "":
-                st.error("密码错误")
+            # (已移除多余的文本标题，仅保留操作按钮，使界面更清爽)
+            if st.button("数据更新管理", use_container_width=True):
+                core_data_update_modal()
 
     col_space_l, col_center_main, col_space_r = st.columns([1, 6, 1])
 
