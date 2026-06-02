@@ -15,7 +15,7 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(
     page_title="Take It Easy - 智能办公助手",
-    page_icon="🔑",
+    page_icon="🔍",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
