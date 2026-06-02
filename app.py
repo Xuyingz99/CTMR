@@ -120,7 +120,7 @@ st.markdown(f"""
     div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
     div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
-        gap: 16px; width: 100% !important; max-width: 964px !important; margin: 0 auto 30px auto !important;
+        gap: 16px; width: 100% !important; margin: 0 0 30px 0 !important;
     }}
     div[role="radiogroup"] label {{
         background: var(--ac-card); border: 1px solid #E5E7EB !important; border-radius: 12px !important;
@@ -399,7 +399,7 @@ def help_modal():
 <p>系统底层严格遵循数据最小化（Data Minimization）与隐私保护原则，从架构层为您的业务敏感信息构筑多维防御壁垒：</p>
 <ul style="padding-left: 20px;">
 <li><b>瞬态计算 (Ephemeral Computing)：</b> 本应用采用瞬态执行环境，所有处理的业务数据均在内存中极速流转，<b>生命周期与当前会话严格绑定</b>。任务结束即刻熔断销毁，系统零落盘，彻底杜绝持久化存储风险。</li>
-<li><b>端到端加密 (E2EE)：</b> 平台部署依托 TLS/SSL 加密通道，保障数据在网络拓扑传输中的绝对安全。</li>
+<li><b>端到端加密 (E2EE)：</b> 平台部署依托 TLS/SSL 军工级加密通道，保障数据在网络拓扑传输中的绝对安全。</li>
 <li><b>最小特权矩阵 (Least Privilege)：</b> 对 GitHub 及云资源的底层访问权限严格约束在自动化执行的必要范围内，通过环境变量进行黑盒加密托管。</li>
 <li><b>逻辑沙箱隔离 (Logical Sandboxing)：</b> 前端渲染视图与底层核心算法双轨并行、完全隔离。任何前端交互均无法逆向击穿或篡改源数据底座。</li>
 </ul>
