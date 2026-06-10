@@ -386,61 +386,69 @@ def core_data_update_modal():
 # ==========================================
 # 动森风格弹窗：网页说明
 # ==========================================
-@st.dialog("📖 Take It Easy 使用手册与安全白皮书", width="large")
+@st.dialog("📖 CTMR 智能风控终端使用手册", width="large")
 def help_modal():
     st.markdown("""
 <div style="font-size: 0.95rem; color: var(--ac-text); line-height: 1.6;">
-<h3 style="color: #2E86C1;">📊 关于 Take It Easy</h3>
-<p>本网页（Take It Easy）是为中粮贸易风控条线量身定制的数据处理与报告生成平台。通过标准化的数据处理流水线，我们将系统报表的繁琐操作转化为一键式的智能输出。</p>
+<h3 style="color: var(--ac-green);">📊 关于 Take It Easy</h3>
+<p>本终端（CTMR）是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的“一键式”智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
 
-<hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+<hr style="border: 0; border-top: 1px solid var(--ac-wood); margin: 15px 0;">
 
-<h4 style="color: #2E86C1;">🛡️ 企业级数据安全与合规架构</h4>
-<p>系统底层严格遵循数据最小化（Data Minimization）与隐私保护原则，从架构层为您的业务敏感信息构筑多维防御壁垒：</p>
+<h4 style="color: var(--ac-green);">🆚 破局传统：为什么 CTMR 是更优解？</h4>
+<p>传统商业智能 (BI) 与 Power Query 等工具在泛用型数据处理上固然强大，但在应对风控条线高频、定制化的报表需求时，往往面临“大而全却不精”的局限。CTMR 致力于解决传统工具的以下痛点，提供不可替代的专属体验：</p>
 <ul style="padding-left: 20px;">
-<li><b>瞬态计算 (Ephemeral Computing)：</b> 本应用采用瞬态执行环境，所有处理的业务数据均在内存中极速流转，<b>生命周期与当前会话严格绑定</b>。任务结束即刻熔断销毁，系统零落盘，彻底杜绝持久化存储风险。</li>
-<li><b>端到端加密 (E2EE)：</b> 平台部署依托 TLS/SSL 军工级加密通道，保障数据在网络拓扑传输中的绝对安全。</li>
-<li><b>最小特权矩阵 (Least Privilege)：</b> 对 GitHub 及云资源的底层访问权限严格约束在自动化执行的必要范围内，通过环境变量进行黑盒加密托管。</li>
-<li><b>逻辑沙箱隔离 (Logical Sandboxing)：</b> 前端渲染视图与底层核心算法双轨并行、完全隔离。任何前端交互均无法逆向击穿或篡改源数据底座。</li>
+<li><b>打通数据汇报的“最后一公里” (End-to-End Output)：</b> 传统 BI 工具的终点往往是“可视化看板”，用户看完数据后仍需手动截图拼凑 Word。而 CTMR 能够穿透底层数据，直接封装为<b>排版就绪、带标准通报话术的 Word 催收函与风控简报</b>，彻底消除“看数据”与“写报告”的割裂感。</li>
+<li><b>零代码的专家级风控引擎 (Hyper-Customization)：</b> 使用 Power Query 往往要求人员具备编写 M 函数或 DAX 的能力。CTMR 将特化的复杂业务逻辑（如：智能感知 1-49 吨与大宗标的的单位跃升、特定的百分比映射规则）<b>黑盒化封装</b>。它不仅是清洗工具，更是开箱即用的“数字风控专家”。</li>
+<li><b>极简架构与“阅后即焚”的合规保障 (Ephemeral Security)：</b> 传统工具往往需要安装沉重客户端，极易在本地留下数据缓存。CTMR 采用极轻量架构，即开即用；且计算全过程在内存中流转，<b>阅后即焚、零数据落盘</b>，完美规避客户数据泄露的合规风险。</li>
 </ul>
 
-<h4 style="color: #2E86C1; margin-top:20px;">🚀 核心业务引擎与数智亮点</h4>
-<table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
-<tr style="background-color: rgba(46, 134, 193, 0.1);">
-<th style="padding: 10px; border: 1px solid #ddd; text-align: left; width: 30%;">核心功能引擎</th>
-<th style="padding: 10px; border: 1px solid #ddd; text-align: left;">数智处理亮点</th>
+<h4 style="color: var(--ac-green); margin-top:20px;">🛡️ 企业级数据安全与底层架构</h4>
+<ul style="padding-left: 20px;">
+<li><b>瞬态计算 (Ephemeral Computing)：</b> 生命周期与当前会话严格绑定，任务结束即刻熔断销毁，系统零落盘。</li>
+<li><b>端到端加密 (E2EE)：</b> 平台部署依托 TLS/SSL 军工级加密通道，保障传输绝对安全。</li>
+<li><b>最小特权矩阵 (Least Privilege)：</b> 核心 Token 均通过环境变量进行黑盒加密托管。</li>
+<li><b>逻辑沙箱隔离 (Logical Sandboxing)：</b> 前端交互无法逆向击穿或篡改源数据底座。</li>
+</ul>
+
+<h4 style="color: var(--ac-green); margin-top:20px;">🚀 核心业务引擎与数智亮点</h4>
+<table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid var(--ac-card-border);">
+<tr style="background-color: var(--ac-info-bg);">
+<th style="padding: 10px; border: 1px solid var(--ac-card-border); text-align: left; width: 30%;">核心功能引擎</th>
+<th style="padding: 10px; border: 1px solid var(--ac-card-border); text-align: left;">数智处理亮点</th>
 </tr>
 <tr>
-<td style="padding: 10px; border: 1px solid #ddd;"><b>初始保证金智能对账</b><br><span style="font-size: 0.8rem; color: #888;">(logic_init)</span></td>
-<td style="padding: 10px; border: 1px solid #ddd;">支持多期报表智能化比对，自动完成清洗提纯，动态渲染 A 类逾期汇总并秒级输出通报文案。</td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);"><b>初始保证金智能对账</b><br><span style="font-size: 0.8rem; opacity: 0.8;">(logic_init)</span></td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);">支持多期报表智能化比对，自动完成清洗提纯，动态渲染 A 类逾期汇总并秒级输出通报文案。</td>
 </tr>
 <tr>
-<td style="padding: 10px; border: 1px solid #ddd;"><b>追加保证金动态回填</b><br><span style="font-size: 0.8rem; color: #888;">(logic_add)</span></td>
-<td style="padding: 10px; border: 1px solid #ddd;">多大区数据矩阵无缝穿透，自动匹配最新日度数据流，一键生成契合管理层决策视角的定制化报告。</td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);"><b>追加保证金动态回填</b><br><span style="font-size: 0.8rem; opacity: 0.8;">(logic_add)</span></td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);">多大区数据矩阵无缝穿透，自动匹配最新日度数据流，一键生成契合管理层决策视角的定制化报告。</td>
 </tr>
 <tr>
-<td style="padding: 10px; border: 1px solid #ddd;"><b>逾期销售风控中枢</b><br><span style="font-size: 0.8rem; color: #888;">(logic_XS)</span></td>
-<td style="padding: 10px; border: 1px solid #ddd;">多源（分批次/一次性）复杂数据流的高速合并与多维账期穿透，智能封装周报文档，同步生成标准催收文本。</td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);"><b>逾期销售风控中枢</b><br><span style="font-size: 0.8rem; opacity: 0.8;">(logic_XS)</span></td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);">多源复杂数据流的高速合并与多维账期穿透，智能封装周报文档，同步生成标准催收文本。</td>
 </tr>
 <tr>
-<td style="padding: 10px; border: 1px solid #ddd;"><b>逾期采购智能对齐</b><br><span style="font-size: 0.8rem; color: #888;">(logic_CG)</span></td>
-<td style="padding: 10px; border: 1px solid #ddd;">多维采购日报的智能合并与对齐，算法级消除多表冗余，自动化提炼并渲染全局采购情况摘要。</td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);"><b>逾期采购智能对齐</b><br><span style="font-size: 0.8rem; opacity: 0.8;">(logic_CG)</span></td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);">多维采购日报的智能合并与对齐，算法级消除多表冗余，自动化提炼并渲染全局采购情况摘要。</td>
 </tr>
 <tr>
-<td style="padding: 10px; border: 1px solid #ddd;"><b>信用全景透视日报</b><br><span style="font-size: 0.8rem; color: #888;">(logic_credit)</span></td>
-<td style="padding: 10px; border: 1px solid #ddd;">深度抓取全局风险核心特征，内置专属格式防火墙与高亮映射，支持 Word 简报与可视化高清图表的一键导出。</td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);"><b>信用全景透视日报</b><br><span style="font-size: 0.8rem; opacity: 0.8;">(logic_credit)</span></td>
+<td style="padding: 10px; border: 1px solid var(--ac-card-border);">深度抓取全局风险核心特征，内置专属格式防火墙与高亮映射，支持 Word 简报与可视化高清图表一键导出。</td>
 </tr>
 </table>
 
-<h4 style="color: #2E86C1; margin-top:20px;">💡 美学与交互巧思：减压办公哲学</h4>
+<h4 style="color: var(--ac-green); margin-top:20px;">💡 美学与交互巧思：减压办公哲学</h4>
 <ul style="padding-left: 20px;">
-<li><b>沉浸式双模主题：</b> 内置灵活的双主题切换引擎。顺应您的办公光线，一键无缝切换，昼夜交替间始终保持最佳视觉舒适度。</li>
+<li><b>沉浸式双模主题：</b> 内置灵活的双主题切换引擎（浅色清新 / 深色专注）。一键无缝切换，昼夜交替间始终保持最佳视觉舒适度。</li>
 <li><b>“动森海岛”治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
-<li><b>绝对防篡改锚点：</b> 无论系统后台经历怎样的高频逻辑迭代，底层部署的“前端 UI 防护墙”都会为您守住当前最完美的交互界面。</li>
+<li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的“前端 UI 防护墙”都会为您守住当前最完美的交互界面。</li>
 </ul>
-<p style="text-align: right; font-weight: bold; margin-top: 20px; color: #555;">—— Xu Yingzhe</p>
+<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Take It Easy 自动化工程团队</p>
 </div>
     """, unsafe_allow_html=True)
+
 
 # 主界面逻辑
 # ==========================================
