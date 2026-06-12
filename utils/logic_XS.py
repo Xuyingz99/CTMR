@@ -1039,7 +1039,7 @@ def process_overdue_sales(batch_files, once_files, need_report=False):
     
     ratio_days = (df_final['逾期天数'] / df_final['合同执行期(天数)']).fillna(0)
     ratio_amt = (df_final['调整后逾期销售金额'] / df_final['合同金额'].replace(0, np.nan)).fillna(0)
-    df_final['是否严重逾期'] = np.where((ratio_days > 0.5) & (ratio_amt > 0.5), "严重逾期", "")
+    df_final['是否严重逾期'] = np.where((ratio_days >= 0.5) & (ratio_amt >= 0.5), "严重逾期", "")
 
     df_final['合同数量'] = (df_final['合同数量'] / 10000).round(4)
     df_final['合同金额'] = (df_final['合同金额'] / 10000).round(2)
