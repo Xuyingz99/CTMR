@@ -445,7 +445,7 @@ def help_modal():
 <li><b>“动森海岛”治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
 <li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的“前端 UI 防护墙”都会为您守住当前最完美的交互界面。</li>
 </ul>
-<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Take It Easy 自动化工程团队</p>
+<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Xu Yingzhe</p>
 </div>
     """, unsafe_allow_html=True)
 
