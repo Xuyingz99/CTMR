@@ -222,18 +222,26 @@ st.markdown(f"""
         color: var(--ac-text) !important; padding: 6px 20px !important; font-size: 1rem !important; font-weight: 700 !important; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }}
     [data-testid="stPills"] button[aria-selected="true"] {{ background: var(--ac-green) !important; color: white !important; border-color: var(--ac-green-dark) !important; box-shadow: 0 4px 0 var(--ac-green-dark); transform: translateY(-2px); }}
-    /* SegmentedControl 卡片风格 (模块选择器) */
+    /* SegmentedControl 卡片风格 — 精确复刻 radio 动森卡片 */
+    [data-testid="stSegmentedControl"] {{
+        display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
+        gap: 16px !important; width: 100% !important; margin: 0 0 30px 0 !important;
+    }}
     [data-testid="stSegmentedControl"] button {{
-        border-radius: 12px !important; border: 1px solid #E5E7EB !important; background: var(--ac-card) !important;
-        color: var(--ac-text) !important; padding: 10px 12px !important; font-size: 0.95rem !important; font-weight: 700 !important;
-        width: 180px !important; height: 85px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); white-space: normal !important;
+        flex: 0 0 180px !important; width: 180px !important; height: 85px !important; box-sizing: border-box !important;
+        display: flex !important; align-items: center !important; justify-content: center !important; text-align: center !important;
+        background: var(--ac-card) !important; border: 1px solid #E5E7EB !important; border-radius: 12px !important;
+        padding: 10px 12px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
+        font-weight: 700 !important; color: var(--ac-text) !important; font-size: 0.95rem !important; line-height: 1.3 !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important; white-space: normal !important;
     }}
     [data-testid="stSegmentedControl"] button[aria-selected="true"] {{
         background: var(--ac-yellow) !important; border-color: var(--ac-yellow-dark) !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; transform: translateY(-2px) !important;
     }}
-    [data-testid="stSegmentedControl"] button:hover:not([aria-selected="true"]) {{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important; }}
+    [data-testid="stSegmentedControl"] button:hover:not([aria-selected="true"]) {{
+        transform: translateY(-2px) !important; box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important;
+    }}
 
     /* ========================================================= */
     /* 🍃 海岛专属加载动画 */
@@ -326,22 +334,6 @@ st.markdown(f"""
 
 </style>
 """, unsafe_allow_html=True)
-
-# 兼容新版 Streamlit：JS 动态隐藏 radio 红点
-st.html("""
-<script>
-(function(){
-    function hideDots() {
-        document.querySelectorAll('div[role="radiogroup"] label').forEach(function(l){
-            var fd = l.querySelector(':scope > div:first-child');
-            if (fd && fd.offsetWidth < 30) { fd.style.display = 'none'; }
-        });
-    }
-    hideDots();
-    new MutationObserver(hideDots).observe(document.body, {childList:true, subtree:true});
-})();
-</script>
-""")
 
 def format_html_content_for_credit(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -542,7 +534,7 @@ def main():
             "📊 信用风险管理日报": "credit_report"
         }
 
-        mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
+        mode = st.segmented_control("选择功能", list(function_map.keys()), default=list(function_map.keys())[0], label_visibility="collapsed")
         
         # --- 模块 1: 初始保证金处理 ---
         if mode == "📈 初始保证金处理":
