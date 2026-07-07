@@ -1035,8 +1035,92 @@ def generate_report(df, df_unique):
         title3 = '附表3：严重逾期销售合同情况' if is_hq_mode else '严重逾期销售合同情况'
         create_appendix(title3, df_app3, 7)
 
+    def _gen_overdue_summary(is_hq_mode):
+        """生成逾期销售总结概述段落（纯新增功能）"""
+        _today = datetime.datetime.now()
+        _days_to_wed = (_today.weekday() - 2) % 7
+        if _days_to_wed == 0:
+            _days_to_wed = 7
+        _last_wed = _today - datetime.timedelta(days=_days_to_wed)
+        _cutoff_date_str = f"{_last_wed.month}月{_last_wed.day}日"
+
+        _total_qty = df_unique['逾期数量（万吨）'].sum()
+        _safe_total = _total_qty if _total_qty > 0 else 1e-9
+
+        if is_hq_mode:
+            _group_col = '大区'
+        else:
+            _group_col = '经营部'
+
+        if _group_col not in df_unique.columns or df_unique[_group_col].dropna().empty:
+            return
+
+        _group_stats = df_unique.groupby(_group_col)['逾期数量（万吨）'].sum().sort_values(ascending=False)
+        if len(_group_stats) == 0:
+            return
+        _top1_name = str(_group_stats.index[0])
+        _top1_qty = _group_stats.iloc[0]
+        _top1_pct = int(round(_top1_qty / _safe_total * 100)) if _safe_total > 0 else 0
+
+        _top1_df = df_unique[df_unique[_group_col] == _top1_name]
+        if '标准原因分类1' not in _top1_df.columns:
+            return
+        _r1_stats = _top1_df.groupby('标准原因分类1')['逾期数量（万吨）'].sum().sort_values(ascending=False)
+        if len(_r1_stats) == 0:
+            return
+        _top1_r1_name = str(_r1_stats.index[0])
+        _top1_r1_qty = _r1_stats.iloc[0]
+        _top1_r1_pct = int(round(_top1_r1_qty / _top1_qty * 100)) if _top1_qty > 0 else 0
+
+        _top1_r1_df = _top1_df[_top1_df['标准原因分类1'] == _top1_r1_name]
+        _r2_stats = _top1_r1_df.groupby('原因分类2')['逾期数量（万吨）'].sum().sort_values(ascending=False)
+
+        # 第一段
+        _p1 = doc.add_paragraph(style='NormalContent')
+        _run = _p1.add_run(f"截至{_cutoff_date_str}，中粮贸易逾期销售提货数量共{format_qty(_total_qty)}万吨，")
+        set_font_mixed(_run, 14.0, bold=True)
+        _run_hb = _p1.add_run("环比无数据")
+        set_font_mixed(_run_hb, 14.0, bold=True)
+        _run_hb.font.highlight_color = WD_COLOR_INDEX.YELLOW
+        _run = _p1.add_run(f"。本周，{_top1_name}逾期提货数量{format_qty(_top1_qty)}万吨，占中粮贸易整体{format_qty(_total_qty)}万吨的{_top1_pct}%。")
+        set_font_mixed(_run, 14.0, bold=True)
+        _p1.paragraph_format.space_after = Pt(0)
+
+        # 第二段
+        _p2 = doc.add_paragraph(style='NormalContent')
+        _run = _p2.add_run(f"{_top1_name}{format_qty(_top1_qty)}万吨逾期提货量中，{format_qty(_top1_r1_qty)}万吨逾期是因{_top1_r1_name}，占比约{_top1_r1_pct}%，")
+        set_font_mixed(_run, 14.0, bold=True)
+        _p2.paragraph_format.space_after = Pt(0)
+
+        # 第三段
+        _p3 = doc.add_paragraph(style='NormalContent')
+        _run = _p3.add_run("包括：")
+        set_font_mixed(_run, 14.0, bold=True)
+
+        _RED_R2_KEYWORDS = ['我方其他原因（需详细说明）', '客户其他原因（需详细说明）']
+        _r2_items_text = []
+        for _r2_name, _r2_qty in _r2_stats.items():
+            _r2_name_str = str(_r2_name) if pd.notna(_r2_name) else ''
+            _r2_items_text.append(f"{format_qty(_r2_qty)}万吨是因{_r2_name_str}")
+        _r2_text = "；".join(_r2_items_text) + "。"
+        _pattern = '(' + '|'.join(re.escape(k) for k in _RED_R2_KEYWORDS) + ')'
+        _split_parts = re.split(_pattern, _r2_text)
+        for _part in _split_parts:
+            if not _part:
+                continue
+            _run = _p3.add_run(_part)
+            _is_red = _part in _RED_R2_KEYWORDS
+            set_font_mixed(_run, 14.0, bold=False)
+            if _is_red:
+                _run.font.color.rgb = RGBColor(255, 0, 0)
+
+        _run_end = _p3.add_run("具体情况如下：")
+        set_font_mixed(_run_end, 14.0, bold=True)
+        _p3.paragraph_format.space_after = Pt(0)
+
     if is_hq:
         # 中粮贸易专属报告顺序
+        _gen_overdue_summary(is_hq_mode=True)
         gen_empty_section('（一）逾期销售数量')
         gen_kehu('（二）逾期销售分客户', True)
         gen_yuanyin('（三）逾期销售原因')
@@ -1046,6 +1130,7 @@ def generate_report(df, df_unique):
         gen_appendices(True)
     else:
         # 大区报告顺序与修改后的标题
+        _gen_overdue_summary(is_hq_mode=False)
         gen_tianshu('3、逾期销售天数')
         gen_appendices(False)
 
