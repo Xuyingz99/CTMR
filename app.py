@@ -116,55 +116,50 @@ st.markdown(f"""
     .sub-title {{ font-size: 1.1rem; color: var(--ac-wood) !important; font-weight: 700; letter-spacing: 2px; margin-top: 1rem; }}
     .greeting-text {{ font-size: 1.6rem; font-weight: 700; color: var(--ac-text); text-align: center; margin-bottom: 2rem; }}
 
-    /* 2. 顶部功能切换卡片 (适配最新版 Streamlit，终极防失效) */
-
-    /* 核心修复：直接命中 baseweb 底层，彻底抹杀原生红点圆圈 */
-    [data-testid="stRadio"] [data-baseweb="radio"] > div:first-child {{
-        display: none !important;
+    /* 2. 顶部功能切换卡片 (无损增量升级：彻底隐藏原生红点) */
+    [data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {{
+        display: none !important; /* 核心：彻底抹除左侧刺眼大红点 */
     }}
 
-    /* 修复排版容器：强制横向弹性布局 */
-    [data-testid="stRadio"] > div {{
+    [data-testid="stRadio"] div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
         gap: 16px; width: 100% !important; max-width: 964px !important; margin: 0 auto 30px auto !important;
-        flex-direction: row !important;
     }}
 
     /* 未选中时的卡片基础态 */
-    [data-testid="stRadio"] [data-baseweb="radio"] {{
+    [data-testid="stRadio"] div[role="radiogroup"] label {{
         background: var(--ac-card) !important;
         border: 2px solid #E5E7EB !important;
         border-radius: 14px !important;
-        padding: 10px 12px !important;
+        padding: 10px 12px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.03) !important;
         flex: 0 0 180px !important; width: 180px !important; height: 85px !important; box-sizing: border-box !important;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
         display: flex !important; align-items: center !important; justify-content: center !important; text-align: center !important;
         cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), pointer !important;
-        margin-right: 0 !important;
     }}
 
-    /* 文本基础态穿透 */
-    [data-testid="stRadio"] [data-baseweb="radio"] p {{
+    /* 未选中时的卡片文字 */
+    [data-testid="stRadio"] div[role="radiogroup"] label p {{
         color: var(--ac-text) !important; font-weight: 600 !important; font-size: 0.95rem !important; line-height: 1.3 !important; margin: 0 !important;
     }}
 
-    /* 选中时的卡片高亮态 (使用 :has 选择器，100% 免疫 Streamlit 更新) */
-    [data-testid="stRadio"] [data-baseweb="radio"]:has(input:checked) {{
+    /* 选中时的卡片高亮态 (动态无缝兼容：海岛自动变主题黄，海滩自动变海盐蓝) */
+    [data-testid="stRadio"] div[role="radiogroup"] > label[data-checked="true"] {{
         background: var(--ac-yellow) !important;
         border-color: var(--ac-yellow-dark) !important;
         box-shadow: 0 5px 0 0 var(--ac-wood), 0 4px 12px rgba(107, 92, 67, 0.15) !important;
         transform: translateY(-3px) !important;
     }}
 
-    /* 选中时内部的文字加粗与颜色加深 */
-    [data-testid="stRadio"] [data-baseweb="radio"]:has(input:checked) p {{
+    /* 选中卡片内部的文字加粗穿透 */
+    [data-testid="stRadio"] div[role="radiogroup"] > label[data-checked="true"] p {{
         font-weight: 800 !important;
-        color: #794f27 !important;
+        color: #794f27 !important; /* 经典的动森深木色高亮文字 */
     }}
 
     /* 未选中卡片的 Hover 悬浮律动 */
-    [data-testid="stRadio"] [data-baseweb="radio"]:hover:not(:has(input:checked)) {{
+    [data-testid="stRadio"] div[role="radiogroup"] label:hover:not([data-checked="true"]) {{
         transform: translateY(-2px) !important;
         border-color: var(--ac-wood) !important;
         box-shadow: 0 6px 12px rgba(107, 92, 67, 0.08) !important;
@@ -357,6 +352,16 @@ st.markdown(f"""
     [data-testid="stExpanderDetails"] button:active {{
         transform: translateY(2px) !important;
         box-shadow: 0 1px 0 0 var(--ac-wood) !important;
+    }}
+
+    /* 9. 修复所有原生组件标题 (如 "选择报告生成范围" 等 Widget Label) 的颜色断层 */
+    [data-testid="stWidgetLabel"] p {{
+        color: var(--ac-text) !important;
+        font-weight: 800 !important;
+        font-size: 1.1rem !important;
+        letter-spacing: 0.02em !important;
+        margin-bottom: 8px !important;
+        text-shadow: 1px 1px 0px var(--ac-bg) !important;
     }}
 
 </style>
