@@ -1075,48 +1075,114 @@ def generate_report(df, df_unique):
         _top1_r1_df = _top1_df[_top1_df['标准原因分类1'] == _top1_r1_name]
         _r2_stats = _top1_r1_df.groupby('原因分类2')['逾期数量（万吨）'].sum().sort_values(ascending=False)
 
-        # 第一段
-        _p1 = doc.add_paragraph(style='NormalContent')
-        _run = _p1.add_run(f"截至{_cutoff_date_str}，中粮贸易逾期销售提货数量共{format_qty(_total_qty)}万吨，")
-        set_font_mixed(_run, 14.0, bold=True)
-        _run_hb = _p1.add_run("环比无数据")
-        set_font_mixed(_run_hb, 14.0, bold=True)
-        _run_hb.font.highlight_color = WD_COLOR_INDEX.YELLOW
-        _run = _p1.add_run(f"。本周，{_top1_name}逾期提货数量{format_qty(_top1_qty)}万吨，占中粮贸易整体{format_qty(_total_qty)}万吨的{_top1_pct}%。")
-        set_font_mixed(_run, 14.0, bold=True)
-        _p1.paragraph_format.space_after = Pt(0)
+        # 原因分类1名称简化映射（仅展示用，不改源数据）
+        def _simplify_r1_name(name):
+            _s = str(name)
+            if '一、客户原因' in _s or '客户原因为主' in _s:
+                return '客户原因'
+            if '二、我方原因' in _s or '我方原因为主' in _s:
+                return '我方原因'
+            if '三、既非我方原因也非对方原因' in _s:
+                return '其他原因'
+            return _s
 
-        # 第二段
-        _p2 = doc.add_paragraph(style='NormalContent')
-        _run = _p2.add_run(f"{_top1_name}{format_qty(_top1_qty)}万吨逾期提货量中，{format_qty(_top1_r1_qty)}万吨逾期是因{_top1_r1_name}，占比约{_top1_r1_pct}%，")
-        set_font_mixed(_run, 14.0, bold=True)
-        _p2.paragraph_format.space_after = Pt(0)
-
-        # 第三段
-        _p3 = doc.add_paragraph(style='NormalContent')
-        _run = _p3.add_run("包括：")
-        set_font_mixed(_run, 14.0, bold=True)
-
+        _simplified_r1 = _simplify_r1_name(_top1_r1_name)
         _RED_R2_KEYWORDS = ['我方其他原因（需详细说明）', '客户其他原因（需详细说明）']
-        _r2_items_text = []
-        for _r2_name, _r2_qty in _r2_stats.items():
-            _r2_name_str = str(_r2_name) if pd.notna(_r2_name) else ''
-            _r2_items_text.append(f"{format_qty(_r2_qty)}万吨是因{_r2_name_str}")
-        _r2_text = "；".join(_r2_items_text) + "。"
-        _pattern = '(' + '|'.join(re.escape(k) for k in _RED_R2_KEYWORDS) + ')'
-        _split_parts = re.split(_pattern, _r2_text)
-        for _part in _split_parts:
-            if not _part:
-                continue
-            _run = _p3.add_run(_part)
-            _is_red = _part in _RED_R2_KEYWORDS
-            set_font_mixed(_run, 14.0, bold=False)
-            if _is_red:
-                _run.font.color.rgb = RGBColor(255, 0, 0)
 
-        _run_end = _p3.add_run("具体情况如下：")
-        set_font_mixed(_run_end, 14.0, bold=True)
-        _p3.paragraph_format.space_after = Pt(0)
+        # 总结概述段落（连续一整段，默认黑色不加粗，仅特殊标记有格式）
+        _p = doc.add_paragraph(style='NormalContent')
+
+        _run = _p.add_run(f"截至{_cutoff_date_str}，中粮贸易逾期销售提货数量共")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # 总吨位+单位（标红加粗 ①）
+        _run = _p.add_run(f"{format_qty(_total_qty)}万吨")
+        set_font_mixed(_run, 14.0, bold=True)
+        _run.font.color.rgb = RGBColor(255, 0, 0)
+
+        _run = _p.add_run("，")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # 环比增量描述（标红加粗 ② + 亮黄色底纹）
+        _run = _p.add_run("环比无数据")
+        set_font_mixed(_run, 14.0, bold=True)
+        _run.font.color.rgb = RGBColor(255, 0, 0)
+        _run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+
+        _run = _p.add_run("。本周，")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # Top1主体逾期提货量完整描述（标红加粗 ③）
+        _run = _p.add_run(f"{_top1_name}逾期提货数量{format_qty(_top1_qty)}万吨")
+        set_font_mixed(_run, 14.0, bold=True)
+        _run.font.color.rgb = RGBColor(255, 0, 0)
+
+        _run = _p.add_run("，占中粮贸易整体")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        _run = _p.add_run(f"{format_qty(_total_qty)}万吨")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        _run = _p.add_run("的")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # 占比百分比（标红加粗）
+        _run = _p.add_run(f"{_top1_pct}%")
+        set_font_mixed(_run, 14.0, bold=True)
+        _run.font.color.rgb = RGBColor(255, 0, 0)
+
+        _run = _p.add_run("。")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        _run = _p.add_run(f"{_top1_name}{format_qty(_top1_qty)}万吨")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        _run = _p.add_run("逾期提货量中，")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # 原因分类1吨位+原因完整分句（仅加粗 ①）
+        _run = _p.add_run(f"{format_qty(_top1_r1_qty)}万吨逾期是因{_simplified_r1}")
+        set_font_mixed(_run, 14.0, bold=True)
+
+        _run = _p.add_run("，占比约")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # 原因分类1占比百分比数值（仅加粗 ②）
+        _run = _p.add_run(f"{_top1_r1_pct}%")
+        set_font_mixed(_run, 14.0, bold=True)
+
+        _run = _p.add_run("，包括：")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        # 原因分类2逐项拼接
+        _r2_items = list(_r2_stats.items())
+        for _idx, (_r2_name, _r2_qty) in enumerate(_r2_items):
+            _r2_name_str = str(_r2_name) if pd.notna(_r2_name) else ''
+
+            # 数值+万吨（仅加粗 ③）
+            _run = _p.add_run(f"{format_qty(_r2_qty)}万吨")
+            set_font_mixed(_run, 14.0, bold=True)
+
+            _run = _p.add_run("是因")
+            set_font_mixed(_run, 14.0, bold=False)
+
+            # 原因名称：匹配关键词则仅标红不加粗，否则黑色不加粗
+            _run = _p.add_run(_r2_name_str)
+            if _r2_name_str in _RED_R2_KEYWORDS:
+                set_font_mixed(_run, 14.0, bold=False)
+                _run.font.color.rgb = RGBColor(255, 0, 0)
+            else:
+                set_font_mixed(_run, 14.0, bold=False)
+
+            # 分隔符
+            _sep = "。" if _idx == len(_r2_items) - 1 else "；"
+            _run = _p.add_run(_sep)
+            set_font_mixed(_run, 14.0, bold=False)
+
+        _run = _p.add_run("具体情况如下：")
+        set_font_mixed(_run, 14.0, bold=False)
+
+        _p.paragraph_format.space_after = Pt(0)
 
     if is_hq:
         # 中粮贸易专属报告顺序
