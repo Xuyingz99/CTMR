@@ -653,7 +653,7 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-            st.markdown('<div style="margin-bottom: 8px; font-weight: 700; color: #794f27;">选择报告生成范围</div>', unsafe_allow_html=True)
+            st.markdown('<div style="margin-bottom: 8px; font-weight: 800; color: var(--ac-green); font-size: 1.05rem;">选择报告生成范围</div>', unsafe_allow_html=True)
             region_options = ["中粮贸易", "沿海大区", "沿江大区", "内陆大区", "东北大区"]
             
             selection = st.pills("选择报告生成范围", region_options, default="中粮贸易", label_visibility="collapsed")
