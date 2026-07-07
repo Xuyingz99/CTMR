@@ -214,46 +214,26 @@ st.markdown(f"""
     div.stButton > button:hover, div[data-testid="stDownloadButton"] > button:hover {{ background-color: var(--ac-green); transform: translateY(2px); box-shadow: 0 4px 0 var(--ac-green-dark); opacity: 0.9; }}
     div.stButton > button:active, div[data-testid="stDownloadButton"] > button:active {{ transform: translateY(6px); box-shadow: none; }}
 
-    /* 6. 动森气泡导航栏 */
-    .bubble-nav {{
-        display: flex; flex-wrap: wrap; justify-content: center; gap: 14px;
-        margin: 0 0 35px 0; padding: 0;
+    /* 6. Pills / SegmentedControl 标签 */
+    [data-testid="stPills"],
+    [data-testid="stSegmentedControl"] {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }}
+    [data-testid="stPills"] button {{
+        border-radius: 12px !important; border: 1px solid var(--ac-wood) !important; background: var(--ac-card) !important;
+        color: var(--ac-text) !important; padding: 6px 20px !important; font-size: 1rem !important; font-weight: 700 !important; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }}
-    .bubble-btn {{
-        display: inline-flex; align-items: center; justify-content: center;
-        padding: 12px 24px; border-radius: 50px;
-        background: var(--ac-card); color: var(--ac-text);
-        border: 2px solid var(--ac-wood);
-        font-size: 0.95rem; font-weight: 700; text-decoration: none;
-        box-shadow: 0 4px 0 var(--ac-wood), 0 6px 12px rgba(107,92,67,0.06);
-        transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-        position: relative; white-space: nowrap;
-        font-family: 'Nunito', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-        cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), pointer;
+    [data-testid="stPills"] button[aria-selected="true"] {{ background: var(--ac-green) !important; color: white !important; border-color: var(--ac-green-dark) !important; box-shadow: 0 4px 0 var(--ac-green-dark); transform: translateY(-2px); }}
+    /* SegmentedControl 卡片风格 (模块选择器) */
+    [data-testid="stSegmentedControl"] button {{
+        border-radius: 12px !important; border: 1px solid #E5E7EB !important; background: var(--ac-card) !important;
+        color: var(--ac-text) !important; padding: 10px 12px !important; font-size: 0.95rem !important; font-weight: 700 !important;
+        width: 180px !important; height: 85px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); white-space: normal !important;
     }}
-    .bubble-btn:hover {{
-        transform: translateY(-3px) scale(1.04);
-        box-shadow: 0 8px 0 var(--ac-wood), 0 12px 24px rgba(107,92,67,0.12);
-        border-color: var(--ac-green);
+    [data-testid="stSegmentedControl"] button[aria-selected="true"] {{
+        background: var(--ac-yellow) !important; border-color: var(--ac-yellow-dark) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; transform: translateY(-2px);
     }}
-    .bubble-active {{
-        background: var(--ac-yellow); border-color: var(--ac-yellow-dark);
-        box-shadow: 0 5px 0 var(--ac-yellow-dark), 0 8px 20px rgba(247,210,115,0.35);
-        transform: translateY(-2px) scale(1.03);
-    }}
-    .bubble-active:hover {{
-        background: var(--ac-yellow); border-color: var(--ac-yellow-dark);
-        box-shadow: 0 5px 0 var(--ac-yellow-dark), 0 8px 20px rgba(247,210,115,0.35);
-        transform: translateY(-2px) scale(1.03);
-    }}
-    /* 气泡小尾巴 */
-    .bubble-active::after {{
-        content: ''; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
-        width: 0; height: 0;
-        border-left: 8px solid transparent;
-        border-right: 8px solid transparent;
-        border-top: 10px solid var(--ac-yellow-dark);
-    }}
+    [data-testid="stSegmentedControl"] button:hover:not([aria-selected="true"]) {{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important; }}
 
     /* ========================================================= */
     /* 🍃 海岛专属加载动画 */
@@ -346,6 +326,22 @@ st.markdown(f"""
 
 </style>
 """, unsafe_allow_html=True)
+
+# 兼容新版 Streamlit：JS 动态隐藏 radio 红点
+st.html("""
+<script>
+(function(){
+    function hideDots() {
+        document.querySelectorAll('div[role="radiogroup"] label').forEach(function(l){
+            var fd = l.querySelector(':scope > div:first-child');
+            if (fd && fd.offsetWidth < 30) { fd.style.display = 'none'; }
+        });
+    }
+    hideDots();
+    new MutationObserver(hideDots).observe(document.body, {childList:true, subtree:true});
+})();
+</script>
+""")
 
 def format_html_content_for_credit(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
@@ -546,23 +542,8 @@ def main():
             "📊 信用风险管理日报": "credit_report"
         }
 
-        func_labels = list(function_map.keys())
-        tab = st.query_params.get("tab", "0")
-        try:
-            active_idx = int(tab)
-        except:
-            active_idx = 0
-        active_idx = max(0, min(active_idx, len(func_labels) - 1))
-        mode = func_labels[active_idx]
-
-        # 动森气泡导航栏
-        bubbles_html = '<div class="bubble-nav">'
-        for i, label in enumerate(func_labels):
-            active_class = 'bubble-active' if i == active_idx else ''
-            bubbles_html += f'<a href="?tab={i}" class="bubble-btn {active_class}">{label}</a>'
-        bubbles_html += '</div>'
-        st.markdown(bubbles_html, unsafe_allow_html=True)
-
+        mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
+        
         # --- 模块 1: 初始保证金处理 ---
         if mode == "📈 初始保证金处理":
             st.markdown("""
