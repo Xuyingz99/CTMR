@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import warnings
 import os
@@ -118,6 +118,7 @@ st.markdown(f"""
 
     /* 2. 顶部功能切换按钮 (恢复原版清爽微投影卡片) */
     div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
+    div[role="radiogroup"] label input[type="radio"] {{ position: absolute !important; opacity: 0 !important; width: 0 !important; height: 0 !important; pointer-events: none !important; }}
     div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
         gap: 16px; width: 100% !important; margin: 0 0 30px 0 !important;
@@ -445,7 +446,7 @@ def help_modal():
 <li><b>“动森海岛”治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
 <li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的“前端 UI 防护墙”都会为您守住当前最完美的交互界面。</li>
 </ul>
-<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Xu Yingzhe</p>
+<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Take It Easy 自动化工程团队</p>
 </div>
     """, unsafe_allow_html=True)
 
