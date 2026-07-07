@@ -117,10 +117,17 @@ st.markdown(f"""
     .greeting-text {{ font-size: 1.6rem; font-weight: 700; color: var(--ac-text); text-align: center; margin-bottom: 2rem; }}
 
     /* 2. 顶部功能切换按钮 (恢复原版清爽微投影卡片) */
-    div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
-    div[role="radiogroup"] label input {{ position: absolute !important; opacity: 0 !important; width: 0 !important; height: 0 !important; pointer-events: none !important; }}
-    [data-testid="stSegmentedControl"] label input,
-    [data-testid="stRadio"] label input {{ position: absolute !important; opacity: 0 !important; width: 0 !important; height: 0 !important; pointer-events: none !important; }}
+    div[role="radiogroup"] label input,
+    div[role="radiogroup"] label svg,
+    div[role="radiogroup"] label::before,
+    div[role="radiogroup"] label::after {{
+        display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important;
+        opacity: 0 !important; position: absolute !important; pointer-events: none !important;
+    }}
+    div[role="radiogroup"] > label > div:first-child {{
+        display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important;
+        min-width: 0 !important; min-height: 0 !important; overflow: hidden !important;
+    }}
     div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
         gap: 16px; width: 100% !important; margin: 0 0 30px 0 !important;
