@@ -117,20 +117,7 @@ st.markdown(f"""
     .greeting-text {{ font-size: 1.6rem; font-weight: 700; color: var(--ac-text); text-align: center; margin-bottom: 2rem; }}
 
     /* 2. 顶部功能切换按钮 (恢复原版清爽微投影卡片) */
-    div[role="radiogroup"] label input,
-    div[role="radiogroup"] label svg,
-    div[role="radiogroup"] label::before,
-    div[role="radiogroup"] label::after {{
-        display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important;
-        opacity: 0 !important; position: absolute !important; pointer-events: none !important;
-    }}
-    div[role="radiogroup"] > label > div:first-child {{
-        display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important;
-        min-width: 0 !important; min-height: 0 !important; overflow: hidden !important;
-    }}
-    [data-testid="stRadio"] label > div:first-child {{ display: none !important; }}
-    div[role="radiogroup"] label {{ accent-color: transparent !important; }}
-    div[role="radiogroup"] label > div > div:first-child {{ display: none !important; }}
+    div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
     div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
         gap: 16px; width: 100% !important; margin: 0 0 30px 0 !important;
@@ -340,6 +327,22 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
+# 兼容新版 Streamlit：JS 动态隐藏 radio 红点
+st.html("""
+<script>
+(function(){
+    function hideDots() {
+        document.querySelectorAll('div[role="radiogroup"] label').forEach(function(l){
+            var fd = l.querySelector(':scope > div:first-child');
+            if (fd && fd.offsetWidth < 30) { fd.style.display = 'none'; }
+        });
+    }
+    hideDots();
+    new MutationObserver(hideDots).observe(document.body, {childList:true, subtree:true});
+})();
+</script>
+""")
+
 def format_html_content_for_credit(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     list_html = ""
@@ -539,7 +542,7 @@ def main():
             "📊 信用风险管理日报": "credit_report"
         }
 
-        mode = st.segmented_control("选择功能", list(function_map.keys()), default=list(function_map.keys())[0], label_visibility="collapsed")
+        mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
         
         # --- 模块 1: 初始保证金处理 ---
         if mode == "📈 初始保证金处理":
