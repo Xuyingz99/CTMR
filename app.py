@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 import warnings
 import os
@@ -128,6 +128,9 @@ st.markdown(f"""
         display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important;
         min-width: 0 !important; min-height: 0 !important; overflow: hidden !important;
     }}
+    [data-testid="stRadio"] label > div:first-child {{ display: none !important; }}
+    div[role="radiogroup"] label {{ accent-color: transparent !important; }}
+    div[role="radiogroup"] label > div > div:first-child {{ display: none !important; }}
     div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
         gap: 16px; width: 100% !important; margin: 0 0 30px 0 !important;
@@ -224,13 +227,26 @@ st.markdown(f"""
     div.stButton > button:hover, div[data-testid="stDownloadButton"] > button:hover {{ background-color: var(--ac-green); transform: translateY(2px); box-shadow: 0 4px 0 var(--ac-green-dark); opacity: 0.9; }}
     div.stButton > button:active, div[data-testid="stDownloadButton"] > button:active {{ transform: translateY(6px); box-shadow: none; }}
 
-    /* 6. Pills 标签 */
-    [data-testid="stPills"] {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }}
+    /* 6. Pills / SegmentedControl 标签 */
+    [data-testid="stPills"],
+    [data-testid="stSegmentedControl"] {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }}
     [data-testid="stPills"] button {{
         border-radius: 12px !important; border: 1px solid var(--ac-wood) !important; background: var(--ac-card) !important;
         color: var(--ac-text) !important; padding: 6px 20px !important; font-size: 1rem !important; font-weight: 700 !important; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     }}
     [data-testid="stPills"] button[aria-selected="true"] {{ background: var(--ac-green) !important; color: white !important; border-color: var(--ac-green-dark) !important; box-shadow: 0 4px 0 var(--ac-green-dark); transform: translateY(-2px); }}
+    /* SegmentedControl 卡片风格 (模块选择器) */
+    [data-testid="stSegmentedControl"] button {{
+        border-radius: 12px !important; border: 1px solid #E5E7EB !important; background: var(--ac-card) !important;
+        color: var(--ac-text) !important; padding: 10px 12px !important; font-size: 0.95rem !important; font-weight: 700 !important;
+        width: 180px !important; height: 85px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); white-space: normal !important;
+    }}
+    [data-testid="stSegmentedControl"] button[aria-selected="true"] {{
+        background: var(--ac-yellow) !important; border-color: var(--ac-yellow-dark) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; transform: translateY(-2px);
+    }}
+    [data-testid="stSegmentedControl"] button:hover:not([aria-selected="true"]) {{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important; }}
 
     /* ========================================================= */
     /* 🍃 海岛专属加载动画 */
@@ -523,7 +539,7 @@ def main():
             "📊 信用风险管理日报": "credit_report"
         }
 
-        mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
+        mode = st.segmented_control("选择功能", list(function_map.keys()), default=list(function_map.keys())[0], label_visibility="collapsed")
         
         # --- 模块 1: 初始保证金处理 ---
         if mode == "📈 初始保证金处理":
