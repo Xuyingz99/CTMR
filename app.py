@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import warnings
 import os
@@ -116,24 +116,54 @@ st.markdown(f"""
     .sub-title {{ font-size: 1.1rem; color: var(--ac-wood) !important; font-weight: 700; letter-spacing: 2px; margin-top: 1rem; }}
     .greeting-text {{ font-size: 1.6rem; font-weight: 700; color: var(--ac-text); text-align: center; margin-bottom: 2rem; }}
 
-    /* 2. 顶部功能切换按钮 (恢复原版清爽微投影卡片) */
-    div[role="radiogroup"] > label > div:first-child {{ display: none !important; }}
-    div[role="radiogroup"] {{
+    /* 2. 顶部功能切换卡片 (无损增量升级：彻底隐藏原生红点) */
+    [data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {{
+        display: none !important; /* 核心：彻底抹除左侧刺眼大红点 */
+    }}
+
+    [data-testid="stRadio"] div[role="radiogroup"] {{
         display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important;
-        gap: 16px; width: 100% !important; margin: 0 0 30px 0 !important;
+        gap: 16px; width: 100% !important; max-width: 964px !important; margin: 0 auto 30px auto !important;
     }}
-    div[role="radiogroup"] label {{
-        background: var(--ac-card); border: 1px solid #E5E7EB !important; border-radius: 12px !important;
-        padding: 10px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.04) !important;
+
+    /* 未选中时的卡片基础态 */
+    [data-testid="stRadio"] div[role="radiogroup"] label {{
+        background: var(--ac-card) !important;
+        border: 2px solid #E5E7EB !important;
+        border-radius: 14px !important;
+        padding: 10px 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.03) !important;
         flex: 0 0 180px !important; width: 180px !important; height: 85px !important; box-sizing: border-box !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; justify-content: center; text-align: center;
-        font-weight: 700; color: var(--ac-text) !important; font-size: 0.95rem !important; line-height: 1.3 !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        display: flex !important; align-items: center !important; justify-content: center !important; text-align: center !important;
+        cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), pointer !important;
     }}
-    div[role="radiogroup"] label[data-checked="true"] {{
-        background: var(--ac-yellow); border-color: var(--ac-yellow-dark) !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important; transform: translateY(-2px);
+
+    /* 未选中时的卡片文字 */
+    [data-testid="stRadio"] div[role="radiogroup"] label p {{
+        color: var(--ac-text) !important; font-weight: 600 !important; font-size: 0.95rem !important; line-height: 1.3 !important; margin: 0 !important;
     }}
-    div[role="radiogroup"] label:hover:not([data-checked="true"]) {{ transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,0,0,0.08) !important; }}
+
+    /* 选中时的卡片高亮态 (动态无缝兼容：海岛自动变主题黄，海滩自动变海盐蓝) */
+    [data-testid="stRadio"] div[role="radiogroup"] > label[data-checked="true"] {{
+        background: var(--ac-yellow) !important;
+        border-color: var(--ac-yellow-dark) !important;
+        box-shadow: 0 5px 0 0 var(--ac-wood), 0 4px 12px rgba(107, 92, 67, 0.15) !important;
+        transform: translateY(-3px) !important;
+    }}
+
+    /* 选中卡片内部的文字加粗穿透 */
+    [data-testid="stRadio"] div[role="radiogroup"] > label[data-checked="true"] p {{
+        font-weight: 800 !important;
+        color: #794f27 !important; /* 经典的动森深木色高亮文字 */
+    }}
+
+    /* 未选中卡片的 Hover 悬浮律动 */
+    [data-testid="stRadio"] div[role="radiogroup"] label:hover:not([data-checked="true"]) {{
+        transform: translateY(-2px) !important;
+        border-color: var(--ac-wood) !important;
+        box-shadow: 0 6px 12px rgba(107, 92, 67, 0.08) !important;
+    }}
 
     /* 2.5 动森风格复选框 (专门针对逾期销售周报的 checkbox) */
     [data-testid="stCheckbox"] label > div:first-child {{
@@ -327,21 +357,21 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# 兼容新版 Streamlit：JS 动态隐藏 radio 红点
-st.html("""
-<script>
-(function(){
-    function hideDots() {
-        document.querySelectorAll('div[role="radiogroup"] label').forEach(function(l){
-            var fd = l.querySelector(':scope > div:first-child');
-            if (fd && fd.offsetWidth < 30) { fd.style.display = 'none'; }
-        });
-    }
-    hideDots();
-    new MutationObserver(hideDots).observe(document.body, {childList:true, subtree:true});
-})();
-</script>
-""")
+# (方案 B 已启用，CSS 重塑红点为打钩方块，JS 隐藏逻辑暂注释)
+# st.html("""
+# <script>
+# (function(){
+#     function hideDots() {
+#         document.querySelectorAll('div[role="radiogroup"] label').forEach(function(l){
+#             var fd = l.querySelector(':scope > div:first-child');
+#             if (fd && fd.offsetWidth < 30) { fd.style.display = 'none'; }
+#         });
+#     }
+#     hideDots();
+#     new MutationObserver(hideDots).observe(document.body, {childList:true, subtree:true});
+# })();
+# </script>
+# """)
 
 def format_html_content_for_credit(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
