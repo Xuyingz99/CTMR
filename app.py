@@ -357,7 +357,7 @@ st.markdown(f"""
     /* 9. 修复所有原生组件标题 (如 "选择报告生成范围" 等 Widget Label) 的颜色断层 */
     [data-testid="stWidgetLabel"] p {{
         color: var(--ac-text) !important;
-        font-weight: 800 !important;
+        font-weight: 400 !important;
         font-size: 1.1rem !important;
         letter-spacing: 0.02em !important;
         margin-bottom: 8px !important;
