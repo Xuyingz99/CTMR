@@ -10,6 +10,7 @@ from utils.style import display_pretty_report
 from utils.logic_CG import process_overdue_purchase
 from utils.logic_init import process_margin_deposit_logic
 from utils.logic_add import process_additional_margin_logic
+from utils.logic_prepay import process_prepay
 
 warnings.filterwarnings('ignore')
 
@@ -549,7 +550,8 @@ def main():
             "📉 追加保证金处理": "add_margin",
             "⏱️ 逾期销售处理": "overdue_sales",
             "🛒 逾期采购处理": "overdue_purchase",
-            "📊 信用风险管理日报": "credit_report"
+            "📊 信用风险管理日报": "credit_report",
+            "📋 预付款业务处理": "prepay"
         }
 
         mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
@@ -865,6 +867,75 @@ def main():
                             st.error("处理失败，未能提取到有效数据。")
                 else:
                     st.warning("⚠️ 请先上传 Excel 文件！")
+
+        # --- 模块 6: 预付款业务处理 ---
+        elif mode == "📋 预付款业务处理":
+            st.markdown("""
+            <div class="info-box">
+                <div class="info-title">⚠️ 注意事项</div>
+                <div style="margin-left: 2px;">
+                    <div>请上传预付款业务情况表（支持多份同时上传）</div>
+                    <div style="margin-top: 4px;">文件名需包含"预付款"及品种关键词（粮谷/玉米/大豆）</div>
+                    <div style="margin-top: 4px;">可同时上传【预付款业务周度明细汇总】文件（文件名含"汇总"），用于环比计算与数据更新</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            prepay_files = st.file_uploader("📂 上传【预付款周报 + 汇总文件】", type=["xlsx", "xls"],
+                                            accept_multiple_files=True, key="prepay_upload")
+
+            if st.button("🚀 开始处理预付款数据", key="btn_prepay"):
+                if not prepay_files:
+                    st.warning("⚠️ 请先上传数据文件！")
+                else:
+                    with st.spinner("正在智能合并多表并生成专项报告，请稍候..."):
+                        excel_io, doc_io, summary_io, logs = process_prepay(prepay_files)
+
+                        if excel_io:
+                            st.success("✅ 预付款报表处理完成！")
+
+                            for log in logs:
+                                if log.startswith("✅"):
+                                    continue
+                                st.write(log)
+
+                            st.markdown("### 📥 下载生成文件")
+                            mmdd_str = datetime.now().strftime('%m%d')
+
+                            if summary_io:
+                                dl_col1, dl_col2, dl_col3 = st.columns(3)
+                            else:
+                                dl_col1, dl_col2 = st.columns(2)
+
+                            with dl_col1:
+                                st.download_button(
+                                    label="📊 下载【预付款业务情况表】 (Excel)",
+                                    data=excel_io,
+                                    file_name=f"2026年中粮贸易预付款业务情况表-{mmdd_str}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    use_container_width=True
+                                )
+                            with dl_col2:
+                                st.download_button(
+                                    label="📝 下载【预付款业务报告】 (Word)",
+                                    data=doc_io,
+                                    file_name=f"2026年中粮贸易预付款业务情况表-{mmdd_str}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True
+                                )
+                            if summary_io:
+                                with dl_col3:
+                                    st.download_button(
+                                        label="📋 下载【更新后汇总表】 (Excel)",
+                                        data=summary_io,
+                                        file_name="预付款业务周度明细汇总.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        use_container_width=True
+                                    )
+                        else:
+                            st.error("❌ 处理失败，请检查文件格式。")
+                            for log in logs:
+                                st.write(log)
 
     # 动森风格 Footer
     current_theme = st.session_state.get("current_theme", "🏝️ 狸克海岛")
