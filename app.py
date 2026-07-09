@@ -493,6 +493,116 @@ def help_modal():
 # 主界面逻辑
 # ==========================================
 
+def _extract_date_from_filename(fname):
+    """从文件名中提取日期，返回 datetime.date 或 None。
+    支持格式：YYYY.M.D, YYYY-MM-DD, YYYYMMDD, M.D, MM.DD, MMDD（自动补当年）"""
+    import re as _re
+    today = datetime.now().date()
+    candidates = []
+
+    # YYYYMMDD（8位数字）
+    for m in _re.finditer(r'(\d{4})(\d{2})(\d{2})', fname):
+        try:
+            d = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
+            candidates.append(d)
+        except ValueError:
+            pass
+
+    # YYYY.M.D / YYYY-MM-DD / YYYY/MM/DD
+    for m in _re.finditer(r'(\d{4})[.\-/:](\d{1,2})[.\-/:](\d{1,2})', fname):
+        try:
+            d = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
+            candidates.append(d)
+        except ValueError:
+            pass
+
+    # M.D / MM.DD / M-DD 等（无年份，自动补当年）
+    for m in _re.finditer(r'(?<!\d)(\d{1,2})[.\-/:](\d{1,2})(?!\d)', fname):
+        try:
+            d = datetime(today.year, int(m.group(1)), int(m.group(2))).date()
+            candidates.append(d)
+        except ValueError:
+            pass
+
+    # MMDD（4位数字，非8位年份的一部分）
+    for m in _re.finditer(r'(?<!\d)(\d{2})(\d{2})(?!\d)', fname):
+        # 排除已匹配过的 YYYYMMDD
+        start, end = m.start(), m.end()
+        if any(cm.start() <= start and end <= cm.end() for cm in
+               _re.finditer(r'\d{8}', fname)):
+            continue
+        try:
+            d = datetime(today.year, int(m.group(1)), int(m.group(2))).date()
+            candidates.append(d)
+        except ValueError:
+            pass
+
+    if not candidates:
+        return None
+    # 返回距离 today 最近的日期
+    return min(candidates, key=lambda d: abs((d - today).days))
+
+
+def _classify_init_margin_files(files):
+    """给定恰好2个文件，返回 (today_file, prev_file) 或 (None, None)"""
+    if len(files) != 2:
+        return None, None
+
+    f1, f2 = files[0], files[1]
+    n1, n2 = f1.name, f2.name
+    today = datetime.now().date()
+
+    d1 = _extract_date_from_filename(n1)
+    d2 = _extract_date_from_filename(n2)
+
+    has_ws1 = 'wsbzjqkb' in n1.lower()
+    has_ws2 = 'wsbzjqkb' in n2.lower()
+
+    # 根据日期比较，返回 (更近的, 更远的) 或 None
+    def _resolve_by_date():
+        if d1 is None and d2 is None:
+            return None
+        if d1 is None:
+            return (f2, f1) if d2 == today else None
+        if d2 is None:
+            return (f1, f2) if d1 == today else None
+        dist1 = abs((d1 - today).days)
+        dist2 = abs((d2 - today).days)
+        if dist1 < dist2:
+            return (f1, f2)
+        elif dist2 < dist1:
+            return (f2, f1)
+        return None  # 同一天，无法区分
+
+    # Rule 1: 日期优先
+    result = _resolve_by_date()
+    if result is not None:
+        return result
+
+    # Rule 2: WSBZJQKB 优先
+    if has_ws1 and not has_ws2:
+        return (f1, f2)
+    if has_ws2 and not has_ws1:
+        return (f2, f1)
+
+    # Rule 3: 日期有无兜底确认
+    # 3a: 一个有非今日日期，一个无日期 → 有日期的为对照，无日期的为今日
+    # 3b: 一个有今日日期，一个无日期 → 有日期的为今日，无日期的为对照
+    if d1 is not None and d2 is None:
+        if d1 == today:
+            return (f1, f2)   # f1有今日日期→今日
+        else:
+            return (f2, f1)   # f1有非今日日期→对照
+    if d2 is not None and d1 is None:
+        if d2 == today:
+            return (f2, f1)   # f2有今日日期→今日
+        else:
+            return (f1, f2)   # f2有非今日日期→对照
+
+    # 三规则均无法区分
+    return None, None
+
+
 def main():
     # 根据当前主题设置卡片色板（供全局 inline style 使用）
     t = THEMES[st.session_state.current_theme]
@@ -562,55 +672,62 @@ def main():
             <div class="info-box">
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
-                    <div>请务必同时上传两个文件以便进行数据比对</div>
+                    <div>请同时上传今日与对照日两个报表文件</div>
+                    <div style="margin-top: 4px;">系统将根据文件名中的<b>日期</b>或<b>WSBZJQKB</b>标识自动区分今日与对照日报表</div>
                     <div style="margin-top: 4px;">原始表单 Sheet 名称必须包含 WSBZJQKB</div>
                     <div style="margin-top: 4px;">生成结果将包含清洗后的明细表及 A 类逾期汇总</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            c1, c2 = st.columns(2)
-            with c1:
-                current_file = st.file_uploader("📂 1. 上传【今日】报表", type=['xlsx'])
-            with c2:
-                prev_file = st.file_uploader("📂 2. 上传【对照日】报表", type=['xlsx'])
-            
+            uploaded_files = st.file_uploader(
+                "📂 上传【今日 + 对照日】报表（两个文件）",
+                type=['xlsx'],
+                accept_multiple_files=True,
+                key="init_margin_upload"
+            )
+
             if st.button("🚀 开始处理 / Analyze"):
-                if current_file and prev_file:
-                    with st.spinner("正在进行数据比对与清洗，请稍候..."):
-                        excel_data, report_logs = process_margin_deposit_logic(current_file, prev_file)
-                        
-                        if excel_data:
-                            st.success("✅ 处理完成！")
-                            
-                            today_dt = datetime.now()
-                            custom_filename = f"{today_dt.month}.{today_dt.day}(未收保证金情况表)--沿海大区.xlsx"
-                            
-                            st.download_button(
-                                label=f"📥 下载处理后的报表 ({custom_filename})",
-                                data=excel_data,
-                                file_name=custom_filename,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                            )
-                            
-                            st.markdown("### 📢 生成的通报文案")
-                            for log in report_logs:
-                                if str(log).startswith("<div"):
-                                    st.markdown(log, unsafe_allow_html=True)
-                                else:
-                                    st.markdown(f"""
-                                    <div style="background: {st.session_state.card_bg}; padding: 16px 22px; border-radius: 20px;
-                                                border: 2.5px solid {st.session_state.card_border}; margin-bottom: 12px;
-                                                box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
-                                        <span style="color: #725d42; font-weight: 500; line-height: 1.7;">{log}</span>
-                                    </div>
-                                    """, unsafe_allow_html=True)
-                                
-                        else:
-                            st.error("处理失败，请查看下方错误日志")
-                            st.code(report_logs[-1])
+                if not uploaded_files or len(uploaded_files) != 2:
+                    st.warning("⚠️ 请上传恰好两个文件！")
                 else:
-                    st.warning("⚠️ 请确保两个文件都已上传！")
+                    current_file, prev_file = _classify_init_margin_files(uploaded_files)
+                    if current_file is None:
+                        st.error("❌ 无法自动区分今日与对照日报表。请确保文件名中包含日期（如 7.9、0709）或 WSBZJQKB 标识，修改后重新上传。")
+                    else:
+                        st.info(f"📌 自动识别：**{current_file.name}** → 今日报表 | **{prev_file.name}** → 对照日报表")
+                        with st.spinner("正在进行数据比对与清洗，请稍候..."):
+                            excel_data, report_logs = process_margin_deposit_logic(current_file, prev_file)
+
+                            if excel_data:
+                                st.success("✅ 处理完成！")
+
+                                today_dt = datetime.now()
+                                custom_filename = f"{today_dt.month}.{today_dt.day}(未收保证金情况表)--沿海大区.xlsx"
+
+                                st.download_button(
+                                    label=f"📥 下载处理后的报表 ({custom_filename})",
+                                    data=excel_data,
+                                    file_name=custom_filename,
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                )
+
+                                st.markdown("### 📢 生成的通报文案")
+                                for log in report_logs:
+                                    if str(log).startswith("<div"):
+                                        st.markdown(log, unsafe_allow_html=True)
+                                    else:
+                                        st.markdown(f"""
+                                        <div style="background: {st.session_state.card_bg}; padding: 16px 22px; border-radius: 20px;
+                                                    border: 2.5px solid {st.session_state.card_border}; margin-bottom: 12px;
+                                                    box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
+                                            <span style="color: #725d42; font-weight: 500; line-height: 1.7;">{log}</span>
+                                        </div>
+                                        """, unsafe_allow_html=True)
+
+                            else:
+                                st.error("处理失败，请查看下方错误日志")
+                                st.code(report_logs[-1])
                     
         # --- 模块 2: 追加保证金处理 ---
         elif mode == "📉 追加保证金处理":
