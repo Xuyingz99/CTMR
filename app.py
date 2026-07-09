@@ -430,16 +430,16 @@ def help_modal():
     st.markdown("""
 <div style="font-size: 0.95rem; color: var(--ac-text); line-height: 1.6;">
 <h3 style="color: var(--ac-green);">📊 关于 Take It Easy</h3>
-<p>本终端（CTMR）是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的“一键式”智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
+<p>本终端（CTMR）是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
 
 <hr style="border: 0; border-top: 1px solid var(--ac-wood); margin: 15px 0;">
 
 <h4 style="color: var(--ac-green);">🆚 破局传统：为什么 CTMR 是更优解？</h4>
-<p>传统商业智能 (BI) 与 Power Query 等工具在泛用型数据处理上固然强大，但在应对风控条线高频、定制化的报表需求时，往往面临“大而全却不精”的局限。CTMR 致力于解决传统工具的以下痛点，提供不可替代的专属体验：</p>
+<p>传统商业智能 (BI) 与 Power Query 等工具在泛用型数据处理上固然强大，但在应对风控条线高频、定制化的报表需求时，往往面临"大而全却不精"的局限。CTMR 致力于解决传统工具的以下痛点，提供不可替代的专属体验：</p>
 <ul style="padding-left: 20px;">
-<li><b>打通数据汇报的“最后一公里” (End-to-End Output)：</b> 传统 BI 工具的终点往往是“可视化看板”，用户看完数据后仍需手动截图拼凑 Word。而 CTMR 能够穿透底层数据，直接封装为<b>排版就绪、带标准通报话术的 Word 催收函与风控简报</b>，彻底消除“看数据”与“写报告”的割裂感。</li>
-<li><b>零代码的专家级风控引擎 (Hyper-Customization)：</b> 使用 Power Query 往往要求人员具备编写 M 函数或 DAX 的能力。CTMR 将特化的复杂业务逻辑（如：智能感知 1-49 吨与大宗标的的单位跃升、特定的百分比映射规则）<b>黑盒化封装</b>。它不仅是清洗工具，更是开箱即用的“数字风控专家”。</li>
-<li><b>极简架构与“阅后即焚”的合规保障 (Ephemeral Security)：</b> 传统工具往往需要安装沉重客户端，极易在本地留下数据缓存。CTMR 采用极轻量架构，即开即用；且计算全过程在内存中流转，<b>阅后即焚、零数据落盘</b>，完美规避客户数据泄露的合规风险。</li>
+<li><b>打通数据汇报的"最后一公里" (End-to-End Output)：</b> 传统 BI 工具的终点往往是"可视化看板"，用户看完数据后仍需手动截图拼凑 Word。而 CTMR 能够穿透底层数据，直接封装为<b>排版就绪、带标准通报话术的 Word 催收函与风控简报</b>，彻底消除"看数据"与"写报告"的割裂感。</li>
+<li><b>零代码的专家级风控引擎 (Hyper-Customization)：</b> 使用 Power Query 往往要求人员具备编写 M 函数或 DAX 的能力。CTMR 将特化的复杂业务逻辑（如：智能感知 1-49 吨与大宗标的的单位跃升、特定的百分比映射规则）<b>黑盒化封装</b>。它不仅是清洗工具，更是开箱即用的"数字风控专家"。</li>
+<li><b>极简架构与"阅后即焚"的合规保障 (Ephemeral Security)：</b> 传统工具往往需要安装沉重客户端，极易在本地留下数据缓存。CTMR 采用极轻量架构，即开即用；且计算全过程在内存中流转，<b>阅后即焚、零数据落盘</b>，完美规避客户数据泄露的合规风险。</li>
 </ul>
 
 <h4 style="color: var(--ac-green); margin-top:20px;">🛡️ 企业级数据安全与底层架构</h4>
@@ -481,8 +481,8 @@ def help_modal():
 <h4 style="color: var(--ac-green); margin-top:20px;">💡 美学与交互巧思：减压办公哲学</h4>
 <ul style="padding-left: 20px;">
 <li><b>沉浸式双模主题：</b> 内置灵活的双主题切换引擎（浅色清新 / 深色专注）。一键无缝切换，昼夜交替间始终保持最佳视觉舒适度。</li>
-<li><b>“动森海岛”治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
-<li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的“前端 UI 防护墙”都会为您守住当前最完美的交互界面。</li>
+<li><b>"动森海岛"治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
+<li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的"前端 UI 防护墙"都会为您守住当前最完美的交互界面。</li>
 </ul>
 <p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Take It Easy 自动化工程团队</p>
 </div>
@@ -616,44 +616,37 @@ def main():
             <div class="info-box">
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
-                    <div>请务必上传“追加保证金填报表”</div>
-                    <div style="margin-top: 4px;">系统将自动进行筛选、数据清洗与报告生成</div>
-                    <div style="margin-top: 4px;">下方选择相应大区，即可生成专属定制报告</div>
+                    <div>请务必上传"追加保证金填报表"</div>
+                    <div style="margin-top: 4px;">系统将自动进行筛选、数据清洗，并智能判断报告层级（总部/大区）</div>
+                    <div style="margin-top: 4px;">无需手动选择范围，系统将自动生成对应层级的专属定制报告</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
-            st.markdown('<div style="margin-bottom: 8px; font-weight: 600; color: var(--ac-green); font-size: 1.05rem;">选择报告生成范围</div>', unsafe_allow_html=True)
-            region_options = ["中粮贸易", "沿海大区", "沿江大区", "内陆大区", "东北大区"]
-            
-            selection = st.pills("选择报告生成范围", region_options, default="中粮贸易", label_visibility="collapsed")
-            selected_region = selection if selection is not None else "中粮贸易"
 
             uploaded_file = st.file_uploader("📂 上传【追加保证金填报表】", type=['xlsx'])
 
             if st.button("🚀 生成报告 / Generate Report"):
                 if uploaded_file:
-                    with st.spinner(f"正在为【{selected_region}】生成专属报告..."):
-                        output_file, logs, report_a, report_b, max_date_str = process_additional_margin_logic(uploaded_file, selected_region)
-                        
+                    with st.spinner("正在智能判断报告层级并生成专属报告..."):
+                        output_file, logs, report_a, report_b, max_date_str = process_additional_margin_logic(uploaded_file)
+
                         if output_file:
-                            st.success(f"✅ {selected_region}报告生成完成！")
-                            
+                            st.success("✅ 报告生成完成！")
+
                             today_mmdd = datetime.now().strftime('%m%d')
-                            file_prefix = "中粮贸易" if selected_region == "中粮贸易" else f"{selected_region}"
-                            dl_filename = f"{file_prefix}追加保证金填报表{today_mmdd}-截至{max_date_str}数据.xlsx"
+                            dl_filename = f"追加保证金填报表{today_mmdd}-截至{max_date_str}数据.xlsx"
                             st.download_button(
                                 label=f"📥 下载定制报告 ({dl_filename})",
                                 data=output_file,
                                 file_name=dl_filename,
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                             )
-                            
+
                             c_a, c_b = st.columns(2)
                             with c_a:
-                                display_pretty_report(f"业务单位报告 ({selected_region})", report_a, bold_first_para=False)
+                                display_pretty_report("业务单位报告", report_a, bold_first_para=False)
                             with c_b:
-                                display_pretty_report(f"分客户报告 ({selected_region})", report_b, bold_first_para=False)
+                                display_pretty_report("分客户报告", report_b, bold_first_para=False)
                         else:
                             st.error("处理失败")
                             for l in logs: st.write(l)
@@ -666,34 +659,27 @@ def main():
             <div class="info-box">
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
-                    <div>请分别上传【逾期销售（分批次）】和【逾期销售（一次性）】的表格数据</div>
-                    <div style="margin-top: 4px;">系统将自动整合数据、计算逾期金额、匹配客户信息</div>
+                    <div>请上传【逾期销售数据】文件（支持分批次和一次性混合上传，最多12个）</div>
+                    <div style="margin-top: 4px;">系统将自动识别文件类型（分批次/一次性）、整合数据、计算逾期金额、匹配客户信息</div>
                     <div style="margin-top: 4px;">勾选复选框，可同时生成周报 Word 文档及催收提醒文本</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
+
             need_report = st.checkbox("📝 需要生成【逾期销售周报】(Word格式)", value=False)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                batch_files = st.file_uploader("📂 逾期销售（分批次） [最多6个]", type=["xlsx", "xls"], accept_multiple_files=True, key="batch_upload")
-                if batch_files and len(batch_files) > 6:
-                    st.warning("⚠️ 分批次文件最多只能上传6个，超出的部分将被忽略。")
-                    batch_files = batch_files[:6]
-                    
-            with col2:
-                once_files = st.file_uploader("📂 逾期销售（一次性） [最多6个]", type=["xlsx", "xls"], accept_multiple_files=True, key="once_upload")
-                if once_files and len(once_files) > 6:
-                    st.warning("⚠️ 一次性文件最多只能上传6个，超出的部分将被忽略。")
-                    once_files = once_files[:6]
-                    
+
+            # 合并上传组件：一次性上传所有逾期销售文件，后端自动识别分批次/一次性
+            uploaded_files = st.file_uploader("📂 上传【逾期销售数据】 [最多12个]", type=["xlsx", "xls"], accept_multiple_files=True, key="xs_upload")
+            if uploaded_files and len(uploaded_files) > 12:
+                st.warning("⚠️ 最多只能上传12个文件，超出的部分将被忽略。")
+                uploaded_files = uploaded_files[:12]
+
             if st.button("🚀 开始处理逾期数据", key="btn_xs"):
-                if not batch_files and not once_files:
-                    st.warning("⚠️ 请至少在一个文件栏中上传数据文件！")
+                if not uploaded_files:
+                    st.warning("⚠️ 请先上传数据文件！")
                 else:
-                    with st.spinner("正在高速运算并生成报告中..."):
-                        excel_io, word_io, collection_text, logs = process_overdue_sales(batch_files, once_files, need_report)
+                    with st.spinner("正在智能识别文件类型并生成报告中..."):
+                        excel_io, word_io, collection_text, logs = process_overdue_sales(uploaded_files, need_report)
                         
                         if excel_io:
                             st.success("✅ 逾期数据处理成功！")
