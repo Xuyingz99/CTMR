@@ -1271,13 +1271,67 @@ def beautify_excel_for_io(wb):
         except: pass
     return wb
 
-def process_overdue_sales(batch_files, once_files, need_report=False):
+def process_overdue_sales(uploaded_files, need_report=False):
+    """处理逾期销售数据，内部自动识别分批次/一次性文件"""
     logs = []
     header_keywords = ["大区", "经营部", "合同编号", "客户名称"]
     date_columns = ["合同签订日期", "交货开始日期", "交货结束日期", "预计完成日期"]
     all_numeric_columns = ["合同数量", "合同单价", "合同金额", "调整后逾期销售金额", "逾期天数I", "逾期天数II", "逾期天数III", "逾期天数IV", "逾期天数V", "逾期天数VI"]
     special_int_columns = ["逾期天数I", "逾期天数II", "逾期天数III", "逾期天数IV", "逾期天数V", "逾期天数VI"]
+    # 分批次的标志性列名（用于表头校验）
+    batch_indicator_columns = [f"逾期天数{roman}" for roman in ['I', 'II', 'III', 'IV', 'V', 'VI']]
 
+    # ==========================================
+    # 智能分类：将上传文件自动分为 batch_files 和 once_files
+    # ==========================================
+    batch_files = []
+    once_files = []
+
+    for f in uploaded_files:
+        # Step 1: 文件名初筛 —— 检查文件名中是否包含"分批次"或"一次性"关键字
+        fname = f.name if hasattr(f, 'name') else ''
+        filename_is_batch = '分批次' in fname
+        filename_is_once = '一次性' in fname
+
+        # Step 2: 表头校验定性 —— 读取标题行，检查是否包含分批次的特定列名
+        # （逾期天数I, 逾期天数II, ... 逾期天数VI）
+        header_is_batch = False
+        try:
+            f.seek(0)
+            df_head = pd.read_excel(f, header=None, nrows=5)
+            # 遍历前5行，查找包含分批标志列的标题行
+            for i, row in df_head.iterrows():
+                row_values = [_normalize_col_name(x) for x in row.values if pd.notna(x)]
+                row_text = ' '.join(row_values)
+                # 检查是否同时包含多个分批标志列（至少命中2个即判定为分批次）
+                match_count = sum(1 for col in batch_indicator_columns if col in row_text)
+                if match_count >= 2:
+                    header_is_batch = True
+                    break
+        except Exception:
+            pass
+
+        # 优先级原则：表头内容 > 文件名关键字
+        # 如果表头包含分批标志列，则绝对锁定为分批次文件
+        if header_is_batch:
+            batch_files.append(f)
+            logs.append(f"📎 {fname} → 识别为【分批次】文件（表头含逾期天数I-VI列）")
+        # 如果文件名明确标注"分批次"，归入分批次
+        elif filename_is_batch:
+            batch_files.append(f)
+            logs.append(f"📎 {fname} → 识别为【分批次】文件（文件名匹配）")
+        # 如果文件名明确标注"一次性"，归入一次性
+        elif filename_is_once:
+            once_files.append(f)
+            logs.append(f"📎 {fname} → 识别为【一次性】文件（文件名匹配）")
+        # 默认归入一次性（不含分批次标志列且文件名无明确标注）
+        else:
+            once_files.append(f)
+            logs.append(f"📎 {fname} → 识别为【一次性】文件（默认归类）")
+
+    # ==========================================
+    # 以下为原有的分批次/一次性分别处理逻辑（保持不变）
+    # ==========================================
     df_batch = pd.DataFrame()
     if batch_files:
         df_list = []

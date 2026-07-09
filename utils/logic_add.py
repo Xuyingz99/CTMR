@@ -430,18 +430,19 @@ def generate_region_customer_report_zj(df_region, today_display, region_name):
         return f"{report_header}\n\n分客户情况如下：\n{'\n'.join(lines)}"
     except: return f"{region_name}大区客户分析报告生成失败。"
 
-def process_additional_margin_logic(uploaded_file, region_filter):
+def process_additional_margin_logic(uploaded_file):
+    """处理追加保证金逻辑，自动判断报告层级（总部级/大区级）"""
     logs = []
     try:
         today_display = f"{datetime.now().month}月{datetime.now().day}日"
-        
+
         book = openpyxl.load_workbook(uploaded_file)
-        ws_original = book.worksheets[0] 
-        
+        ws_original = book.worksheets[0]
+
         if '追保处理' in book.sheetnames: del book['追保处理']
         ws_processed = book.create_sheet('追保处理')
         filtered_rows, column_names = apply_excel_like_filtering_zj(ws_original, ws_processed)
-        
+
         if not filtered_rows:
             return None, ["⚠️ 警告：筛选后没有数据行！"], "", "", ""
 
@@ -453,7 +454,7 @@ def process_additional_margin_logic(uploaded_file, region_filter):
                     row_dict[column_names[col_idx]] = value
             data_for_analysis.append(row_dict)
         df_processed = pd.DataFrame(data_for_analysis)
-        
+
         max_date_str = datetime.now().strftime('%m%d')
         hesuan_col = next((c for c in df_processed.columns if '核算日期' in str(c)), None)
         if hesuan_col:
@@ -463,27 +464,43 @@ def process_additional_margin_logic(uploaded_file, region_filter):
 
         if '分析报告' in book.sheetnames: del book['分析报告']
         ws_report = book.create_sheet('分析报告')
-        
+
+        # ==========================================
+        # 自动判断报告层级：统计"大区"列（排除"玉米中心"）的唯一值数量
+        # ==========================================
         b_col = next((c for c in df_processed.columns if '大区' in str(c) and '玉米中心' not in str(c)), None)
         report_A = ""
         report_B = ""
-        
-        if region_filter == "中粮贸易":
+        report_level = ""  # 记录报告层级，用于日志输出
+
+        if b_col:
+            # 统计大区唯一值（排除空值和"玉米中心"）
+            region_values = df_processed[b_col].dropna().astype(str).unique()
+            region_values = [r for r in region_values if r.strip() != '' and '玉米中心' not in r]
+            region_count = len(region_values)
+        else:
+            region_count = 0
+
+        # 大区数量 >= 2 或为 0：自动判定为总部级报告
+        if region_count >= 2 or region_count == 0:
+            report_level = "总部级"
+            logs.append(f"🔍 检测到 {region_count} 个大区，自动生成总部级报告")
             report_A = generate_analysis_report_zj(df_processed, today_display)
             report_B = generate_customer_analysis_report_zj(df_processed, today_display)
+        # 大区数量 == 1：自动判定为大区级报告
         else:
-            if not b_col:
-                return None, ["❌ 数据中找不到“大区”列，无法进行大区筛选。"], "", "", ""
-            df_region = df_processed[df_processed[b_col] == region_filter].copy()
+            region_name = region_values[0]
+            report_level = f"大区级（{region_name}）"
+            logs.append(f"🔍 检测到仅含【{region_name}】1 个大区，自动生成大区级报告")
+            df_region = df_processed[df_processed[b_col] == region_name].copy()
             if len(df_region) == 0:
-                return None, [f"⚠️ 筛选结果中没有包含【{region_filter}】的数据。"], "", "", ""
-            
-            report_A = generate_region_department_report_zj(df_region, today_display, region_filter)
-            report_B = generate_region_customer_report_zj(df_region, today_display, region_filter)
+                return None, [f"⚠️ 筛选后没有包含【{region_name}】的数据。"], "", "", ""
+            report_A = generate_region_department_report_zj(df_region, today_display, region_name)
+            report_B = generate_region_customer_report_zj(df_region, today_display, region_name)
 
         ws_report.cell(row=1, column=1, value=report_A)
         ws_report.cell(row=1, column=2, value=report_B)
-        
+
         ws_report.column_dimensions['A'].width = 100
         ws_report.column_dimensions['B'].width = 100
         for row in ws_report.iter_rows():
@@ -497,8 +514,8 @@ def process_additional_margin_logic(uploaded_file, region_filter):
         output = io.BytesIO()
         book.save(output)
         output.seek(0)
-        
-        logs.append(f"✅ 【{region_filter}】分析报告生成成功！")
+
+        logs.append(f"✅ {report_level}分析报告生成成功！")
         return output, logs, report_A, report_B, max_date_str
     except Exception as e:
         import traceback

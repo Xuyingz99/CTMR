@@ -548,9 +548,10 @@ def generate_weekly_report(df):
                     contract_para.add_run(f"（{c_idx+1}）")
                     run_cno = contract_para.add_run(f"{contract_row['合同编号']}")
                     run_cno.bold = True
-                    run_cno.font.name = u'仿宋_GB2312'
+                    # 合同号中的英文/数字部分使用 Times New Roman，中文部分保持仿宋_GB2312
+                    run_cno.font.name = 'Times New Roman'
                     run_cno._element.rPr.rFonts.set(qn('w:eastAsia'), u'仿宋_GB2312')
-                    run_cno._element.rPr.rFonts.set(qn('w:ascii'), u'仿宋_GB2312')
+                    run_cno._element.rPr.rFonts.set(qn('w:ascii'), 'Times New Roman')
                     
                     cqty_str = format_qty(contract_row['逾期数量（吨）'] / 10000)
                     camt = contract_row['逾期采购金额（万元）']
