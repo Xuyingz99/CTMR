@@ -673,7 +673,7 @@ def main():
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
                     <div>请同时上传今日与对照日两个报表文件</div>
-                    <div style="margin-top: 4px;">系统将根据文件名中的<b>日期</b>或<b>WSBZJQKB</b>标识自动区分今日与对照日报表</div>
+                    <div style="margin-top: 4px;">系统将根据文件名称自动区分今日与对照日报表</div>
                     <div style="margin-top: 4px;">原始表单 Sheet 名称必须包含 WSBZJQKB</div>
                     <div style="margin-top: 4px;">生成结果将包含清洗后的明细表及 A 类逾期汇总</div>
                 </div>
