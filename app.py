@@ -426,12 +426,12 @@ def core_data_update_modal():
 # ==========================================
 # 动森风格弹窗：网页说明
 # ==========================================
-@st.dialog("📖 CTMR 智能风控终端使用手册", width="large")
+@st.dialog("📖 Take it easy 智能办公助手使用手册", width="large")
 def help_modal():
     st.markdown("""
 <div style="font-size: 0.95rem; color: var(--ac-text); line-height: 1.6;">
 <h3 style="color: var(--ac-green);">📊 关于 Take It Easy</h3>
-<p>本终端（CTMR）是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
+<p>本终端是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
 
 <hr style="border: 0; border-top: 1px solid var(--ac-wood); margin: 15px 0;">
 
@@ -485,7 +485,7 @@ def help_modal():
 <li><b>"动森海岛"治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
 <li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的"前端 UI 防护墙"都会为您守住当前最完美的交互界面。</li>
 </ul>
-<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Take It Easy 自动化工程团队</p>
+<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Xyz</p>
 </div>
     """, unsafe_allow_html=True)
 
