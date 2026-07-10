@@ -181,15 +181,15 @@ st.markdown(f"""
         box-shadow: 0 8px 24px rgba(114, 93, 66, 0.15) !important;
     }}
 
-    /* 4.1 强制穿透修改上传区内部文字与图标大小 (防止溢出) */
+    /* 4.1 强制穿透修改上传区内部文字与图标大小 (防止溢出) — 缩小至更紧凑 */
     [data-testid="stFileUploader"] section * {{
-        font-size: 0.85rem !important;
+        font-size: 0.75rem !important;
     }}
     [data-testid="stFileUploader"] section small {{
-        font-size: 0.7rem !important;
+        font-size: 0.65rem !important;
     }}
     [data-testid="stFileUploader"] section svg {{
-        width: 30px !important; height: 30px !important; margin-bottom: 5px !important;
+        width: 24px !important; height: 24px !important; margin-bottom: 4px !important;
     }}
 
     /* 4.5 NookPhone 胶囊化文本输入框 */
@@ -685,20 +685,51 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-            # === 段 1：检查缓存 ===
+            # === 最上方：上传区 + 处理按钮 ===
+            uploaded_files = st.file_uploader(
+                "📂 上传【今日 + 对照日】报表（两个文件）",
+                type=['xlsx'],
+                accept_multiple_files=True,
+                key="init_margin_upload"
+            )
+
+            if st.button("🚀 开始处理 / Analyze"):
+                if not uploaded_files or len(uploaded_files) != 2:
+                    st.warning("⚠️ 请上传恰好两个文件！")
+                else:
+                    current_file, prev_file = _classify_init_margin_files(uploaded_files)
+                    if current_file is None:
+                        st.error("❌ 无法自动区分今日与对照日报表。请确保文件名中包含日期（如 7.9、0709）或 WSBZJQKB 标识，修改后重新上传。")
+                    else:
+                        with st.spinner("正在进行数据比对与清洗，请稍候..."):
+                            excel_data, report_logs = process_margin_deposit_logic(current_file, prev_file)
+
+                            if excel_data:
+                                st.session_state.module_results["init_margin"] = {
+                                    "excel_data": excel_data,
+                                    "report_logs": report_logs,
+                                    "today_file": current_file.name,
+                                    "prev_file": prev_file.name,
+                                }
+                                st.rerun()
+                            else:
+                                st.session_state.module_results["init_margin"] = None
+                                st.error("处理失败，请查看下方错误日志")
+                                st.code(report_logs[-1])
+
+            # === 中间 + 最下方：检查缓存 → 展示结果与下载按钮 ===
             cached = st.session_state.module_results.get("init_margin")
             if cached is not None:
                 today_dt = datetime.now()
                 custom_filename = f"{today_dt.month}.{today_dt.day}(未收保证金情况表)--沿海大区.xlsx"
-                # 合并提示框：主文字正常字号，自动识别文字左对齐 + 小一号
+                # 复用其他模块 st.success 绿色气泡配色
                 st.markdown(f"""
-                <div style="background: {st.session_state.card_bg}; padding: 16px 22px; border-radius: 20px;
-                            border: 2.5px solid {st.session_state.card_border}; margin-bottom: 12px;
-                            box-shadow: 0 4px 10px rgba(107, 92, 67, 0.10);">
-                    <div style="font-size: 1rem; font-weight: 700; color: #28a745; margin-bottom: 6px;">
+                <div style="background: #d4edda; padding: 16px 22px; border-radius: 12px;
+                            border: 2px solid #c3e6cb; margin-bottom: 12px;">
+                    <div style="font-size: 1rem; font-weight: 700; color: #155724; margin-bottom: 6px;">
                         ✅ 处理完成！
                     </div>
-                    <div style="font-size: 0.85rem; color: #725d42; text-align: left;">
+                    <div style="font-size: 0.85rem; color: #155724; text-align: left;">
                         📌 自动识别：<b>{cached['today_file']}</b> → 今日报表 | <b>{cached['prev_file']}</b> → 对照日报表
                     </div>
                 </div>
@@ -723,39 +754,6 @@ def main():
                             <span style="color: #725d42; font-weight: 500; line-height: 1.7;">{log}</span>
                         </div>
                         """, unsafe_allow_html=True)
-
-            # === 段 2：上传区 + 处理按钮 ===
-            uploaded_files = st.file_uploader(
-                "📂 上传【今日 + 对照日】报表（两个文件）",
-                type=['xlsx'],
-                accept_multiple_files=True,
-                key="init_margin_upload"
-            )
-
-            if st.button("🚀 开始处理 / Analyze"):
-                if not uploaded_files or len(uploaded_files) != 2:
-                    st.warning("⚠️ 请上传恰好两个文件！")
-                else:
-                    current_file, prev_file = _classify_init_margin_files(uploaded_files)
-                    if current_file is None:
-                        st.error("❌ 无法自动区分今日与对照日报表。请确保文件名中包含日期（如 7.9、0709）或 WSBZJQKB 标识，修改后重新上传。")
-                    else:
-                        with st.spinner("正在进行数据比对与清洗，请稍候..."):
-                            excel_data, report_logs = process_margin_deposit_logic(current_file, prev_file)
-
-                            if excel_data:
-                                # 存入缓存 → rerun 后由段 1 渲染结果
-                                st.session_state.module_results["init_margin"] = {
-                                    "excel_data": excel_data,
-                                    "report_logs": report_logs,
-                                    "today_file": current_file.name,
-                                    "prev_file": prev_file.name,
-                                }
-                                st.rerun()
-                            else:
-                                st.session_state.module_results["init_margin"] = None
-                                st.error("处理失败，请查看下方错误日志")
-                                st.code(report_logs[-1])
                     
         # --- 模块 2: 追加保证金处理 ---
         elif mode == "📉 追加保证金处理":
@@ -770,23 +768,7 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-            # === 段 1：检查缓存 ===
-            cached = st.session_state.module_results.get("add_margin")
-            if cached is not None:
-                st.success("✅ 报告生成完成！")
-                st.download_button(
-                    label=f"📥 下载定制报告 ({cached['dl_filename']})",
-                    data=cached["output_file"],
-                    file_name=cached["dl_filename"],
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-                c_a, c_b = st.columns(2)
-                with c_a:
-                    display_pretty_report("业务单位报告", cached["report_a"], bold_first_para=False)
-                with c_b:
-                    display_pretty_report("分客户报告", cached["report_b"], bold_first_para=False)
-
-            # === 段 2：上传区 + 处理按钮 ===
+            # === 最上方：上传区 + 处理按钮 ===
             uploaded_file = st.file_uploader("📂 上传【追加保证金填报表】", type=['xlsx'])
 
             if st.button("🚀 生成报告 / Generate Report"):
@@ -811,6 +793,22 @@ def main():
                 else:
                     st.warning("⚠️ 请先上传文件！")
 
+            # === 中间 + 最下方：检查缓存 → 展示结果与下载按钮 ===
+            cached = st.session_state.module_results.get("add_margin")
+            if cached is not None:
+                st.success("✅ 报告生成完成！")
+                st.download_button(
+                    label=f"📥 下载定制报告 ({cached['dl_filename']})",
+                    data=cached["output_file"],
+                    file_name=cached["dl_filename"],
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                c_a, c_b = st.columns(2)
+                with c_a:
+                    display_pretty_report("业务单位报告", cached["report_a"], bold_first_para=False)
+                with c_b:
+                    display_pretty_report("分客户报告", cached["report_b"], bold_first_para=False)
+
         # --- 模块 3: 逾期销售处理 ---
         elif mode == "⏱️ 逾期销售处理":
             st.markdown("""
@@ -826,35 +824,7 @@ def main():
 
             need_report = st.checkbox("📝 需要生成【逾期销售周报】(Word格式)", value=False)
 
-            # === 段 1：检查缓存 ===
-            cached = st.session_state.module_results.get("overdue_sales")
-            if cached is not None:
-                st.success("✅ 逾期数据处理成功！")
-
-                st.markdown("### 📥 下载结果文件")
-                dl_col1, dl_col2 = st.columns(2)
-                with dl_col1:
-                    st.download_button(
-                        label="📊 下载【逾期销售监控表】 (Excel)",
-                        data=cached["excel_io"],
-                        file_name=f"逾期销售监控表_{cached['mmdd_str']}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
-                if cached["has_word"] and cached["word_io"]:
-                    with dl_col2:
-                        st.download_button(
-                            label="📝 下载【逾期销售周报】 (Word)",
-                            data=cached["word_io"],
-                            file_name=f"逾期销售周报_{cached['yyyymmdd_str']}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            use_container_width=True
-                        )
-                if cached["collection_text"]:
-                    st.markdown("### 📢 生成的通报文案")
-                    display_pretty_report("💬 催收提醒预览", cached["collection_text"], bold_first_para=True)
-
-            # === 段 2：上传区 + 处理按钮 ===
+            # === 最上方：上传区 + 处理按钮 ===
             # 合并上传组件：一次性上传所有逾期销售文件，后端自动识别分批次/一次性
             uploaded_files = st.file_uploader("📂 上传【逾期销售数据】 [最多12个]", type=["xlsx", "xls"], accept_multiple_files=True, key="xs_upload")
             if uploaded_files and len(uploaded_files) > 12:
@@ -884,6 +854,34 @@ def main():
                             st.session_state.module_results["overdue_sales"] = None
                             st.error("❌ 处理失败，请检查文件格式是否符合要求。")
 
+            # === 中间 + 最下方：检查缓存 → 展示结果与下载按钮 ===
+            cached = st.session_state.module_results.get("overdue_sales")
+            if cached is not None:
+                st.success("✅ 逾期数据处理成功！")
+
+                st.markdown("### 📥 下载结果文件")
+                dl_col1, dl_col2 = st.columns(2)
+                with dl_col1:
+                    st.download_button(
+                        label="📊 下载【逾期销售监控表】 (Excel)",
+                        data=cached["excel_io"],
+                        file_name=f"逾期销售监控表_{cached['mmdd_str']}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                if cached["has_word"] and cached["word_io"]:
+                    with dl_col2:
+                        st.download_button(
+                            label="📝 下载【逾期销售周报】 (Word)",
+                            data=cached["word_io"],
+                            file_name=f"逾期销售周报_{cached['yyyymmdd_str']}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True
+                        )
+                if cached["collection_text"]:
+                    st.markdown("### 📢 生成的通报文案")
+                    display_pretty_report("💬 催收提醒预览", cached["collection_text"], bold_first_para=True)
+
         # --- 模块 4: 逾期采购处理 ---
         elif mode == "🛒 逾期采购处理":
             st.markdown("""
@@ -897,7 +895,35 @@ def main():
             </div>
             """, unsafe_allow_html=True)
             
-            # === 段 1：检查缓存 ===
+            # === 最上方：上传区 + 处理按钮 ===
+            cg_files = st.file_uploader("📂 上传【逾期采购数据】 [最多6个]", type=["xlsx", "xls"], accept_multiple_files=True, key="cg_upload")
+
+            if cg_files and len(cg_files) > 6:
+                st.warning("⚠️ 最多只能上传6个文件，超出的部分将被忽略。")
+                cg_files = cg_files[:6]
+
+            if st.button("🚀 开始处理逾期采购数据", key="btn_cg"):
+                if not cg_files:
+                    st.warning("⚠️ 请先上传数据文件！")
+                else:
+                    with st.spinner("正在智能比对与合并多表，生成极速简报中..."):
+                        excel_io, doc_io, web_text, logs = process_overdue_purchase(cg_files)
+
+                        if excel_io:
+                            mmdd_str = datetime.now().strftime('%m%d')
+                            st.session_state.module_results["overdue_purchase"] = {
+                                "excel_io": excel_io,
+                                "doc_io": doc_io,
+                                "web_text": web_text,
+                                "mmdd_str": mmdd_str,
+                            }
+                            st.rerun()
+                        else:
+                            st.session_state.module_results["overdue_purchase"] = None
+                            st.error("❌ 处理失败。")
+                            for log in logs: st.write(log)
+
+            # === 中间 + 最下方：检查缓存 → 展示结果与下载按钮 ===
             cached = st.session_state.module_results.get("overdue_purchase")
             if cached is not None:
                 st.success("✅ 逾期采购数据清洗成功，报表已生成！")
@@ -925,34 +951,6 @@ def main():
                     st.markdown("### 📢 采购情况通报")
                     display_pretty_report("💬 逾期采购情况摘要", cached["web_text"], bold_first_para=True)
 
-            # === 段 2：上传区 + 处理按钮 ===
-            cg_files = st.file_uploader("📂 上传【逾期采购数据】 [最多6个]", type=["xlsx", "xls"], accept_multiple_files=True, key="cg_upload")
-            
-            if cg_files and len(cg_files) > 6:
-                st.warning("⚠️ 最多只能上传6个文件，超出的部分将被忽略。")
-                cg_files = cg_files[:6]
-                
-            if st.button("🚀 开始处理逾期采购数据", key="btn_cg"):
-                if not cg_files:
-                    st.warning("⚠️ 请先上传数据文件！")
-                else:
-                    with st.spinner("正在智能比对与合并多表，生成极速简报中..."):
-                        excel_io, doc_io, web_text, logs = process_overdue_purchase(cg_files)
-
-                        if excel_io:
-                            mmdd_str = datetime.now().strftime('%m%d')
-                            st.session_state.module_results["overdue_purchase"] = {
-                                "excel_io": excel_io,
-                                "doc_io": doc_io,
-                                "web_text": web_text,
-                                "mmdd_str": mmdd_str,
-                            }
-                            st.rerun()
-                        else:
-                            st.session_state.module_results["overdue_purchase"] = None
-                            st.error("❌ 处理失败。")
-                            for log in logs: st.write(log)
-
         # --- 模块 5: 信用风险管理日报 ---
         elif mode == "📊 信用风险管理日报":
             st.markdown("""
@@ -966,7 +964,31 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-            # === 段 1：检查缓存 ===
+            # === 最上方：上传区 + 处理按钮 ===
+            uploaded_file = st.file_uploader("📂 上传【信用风险管理日报】Excel 表", type=['xlsx'])
+
+            if st.button("🚀 生成报告与导出文件 / Generate"):
+                if uploaded_file:
+                    with st.spinner("正在解析 Excel 数据并渲染跨平台文件，请稍候..."):
+                        word_bytes, word_text_dict, export_files, logs, env_msg = process_credit_report(uploaded_file)
+
+                        if word_bytes or export_files:
+                            original_base = os.path.splitext(uploaded_file.name)[0]
+                            st.session_state.module_results["credit_report"] = {
+                                "word_bytes": word_bytes,
+                                "word_text_dict": word_text_dict,
+                                "export_files": export_files,
+                                "env_msg": env_msg,
+                                "uploaded_file_name": original_base,
+                            }
+                            st.rerun()
+                        else:
+                            st.session_state.module_results["credit_report"] = None
+                            st.error("处理失败，未能提取到有效数据。")
+                else:
+                    st.warning("⚠️ 请先上传 Excel 文件！")
+
+            # === 中间 + 最下方：检查缓存 → 展示结果与下载按钮 ===
             cached = st.session_state.module_results.get("credit_report")
             if cached is not None:
                 st.info(f"💡 {cached['env_msg']}")
@@ -1016,30 +1038,6 @@ def main():
                     for p_f in png_files:
                         st.image(p_f["data"], caption=p_f["name"], use_container_width=True)
 
-            # === 段 2：上传区 + 处理按钮 ===
-            uploaded_file = st.file_uploader("📂 上传【信用风险管理日报】Excel 表", type=['xlsx'])
-
-            if st.button("🚀 生成报告与导出文件 / Generate"):
-                if uploaded_file:
-                    with st.spinner("正在解析 Excel 数据并渲染跨平台文件，请稍候..."):
-                        word_bytes, word_text_dict, export_files, logs, env_msg = process_credit_report(uploaded_file)
-
-                        if word_bytes or export_files:
-                            original_base = os.path.splitext(uploaded_file.name)[0]
-                            st.session_state.module_results["credit_report"] = {
-                                "word_bytes": word_bytes,
-                                "word_text_dict": word_text_dict,
-                                "export_files": export_files,
-                                "env_msg": env_msg,
-                                "uploaded_file_name": original_base,
-                            }
-                            st.rerun()
-                        else:
-                            st.session_state.module_results["credit_report"] = None
-                            st.error("处理失败，未能提取到有效数据。")
-                else:
-                    st.warning("⚠️ 请先上传 Excel 文件！")
-
         # --- 模块 6: 预付款业务处理 ---
         elif mode == "📋 预付款业务处理":
             st.markdown("""
@@ -1053,15 +1051,37 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-            # === 段 1：检查缓存 ===
+            # === 最上方：上传区 + 处理按钮 ===
+            prepay_files = st.file_uploader("📂 上传【预付款周报 + 汇总文件】", type=["xlsx", "xls"],
+                                            accept_multiple_files=True, key="prepay_upload")
+
+            if st.button("🚀 开始处理预付款数据", key="btn_prepay"):
+                if not prepay_files:
+                    st.warning("⚠️ 请先上传数据文件！")
+                else:
+                    with st.spinner("正在智能合并多表并生成专项报告，请稍候..."):
+                        excel_io, doc_io, summary_io, logs = process_prepay(prepay_files)
+
+                        if excel_io:
+                            mmdd_str = datetime.now().strftime('%m%d')
+                            st.session_state.module_results["prepay"] = {
+                                "excel_io": excel_io,
+                                "doc_io": doc_io,
+                                "summary_io": summary_io,
+                                "has_summary": summary_io is not None,
+                                "mmdd_str": mmdd_str,
+                            }
+                            st.rerun()
+                        else:
+                            st.session_state.module_results["prepay"] = None
+                            st.error("❌ 处理失败，请检查文件格式。")
+                            for log in logs:
+                                st.write(log)
+
+            # === 中间 + 最下方：检查缓存 → 展示结果与下载按钮 ===
             cached = st.session_state.module_results.get("prepay")
             if cached is not None:
-                st.success("✅ 预付款报表处理完成！")
-
-                # 仅展示最终摘要行，不逐条输出详细过程日志
-                summary_logs = [log for log in cached["summary_logs"] if log.startswith("✅")]
-                for log in summary_logs:
-                    st.write(log)
+                st.success("✅ 预付款处理完成")
 
                 st.markdown("### 📥 下载生成文件")
 
@@ -1095,35 +1115,6 @@ def main():
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True
                         )
-
-            # === 段 2：上传区 + 处理按钮 ===
-            prepay_files = st.file_uploader("📂 上传【预付款周报 + 汇总文件】", type=["xlsx", "xls"],
-                                            accept_multiple_files=True, key="prepay_upload")
-
-            if st.button("🚀 开始处理预付款数据", key="btn_prepay"):
-                if not prepay_files:
-                    st.warning("⚠️ 请先上传数据文件！")
-                else:
-                    with st.spinner("正在智能合并多表并生成专项报告，请稍候..."):
-                        excel_io, doc_io, summary_io, logs = process_prepay(prepay_files)
-
-                        if excel_io:
-                            mmdd_str = datetime.now().strftime('%m%d')
-                            st.session_state.module_results["prepay"] = {
-                                "excel_io": excel_io,
-                                "doc_io": doc_io,
-                                "summary_io": summary_io,
-                                "has_summary": summary_io is not None,
-                                "summary_logs": logs,
-                                "mmdd_str": mmdd_str,
-                            }
-                            st.rerun()
-                        else:
-                            st.session_state.module_results["prepay"] = None
-                            st.error("❌ 处理失败，请检查文件格式。")
-                            # 失败时展示所有错误日志
-                            for log in logs:
-                                st.write(log)
 
     # 动森风格 Footer
     current_theme = st.session_state.get("current_theme", "🏝️ 狸克海岛")
