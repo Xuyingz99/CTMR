@@ -46,6 +46,22 @@ def _normalize_col_name(name):
     s = re.sub(r'\s+', '', s)      # 清除所有ASCII空白字符
     return s
 
+
+def _normalize_brackets(text):
+    """
+    统一括号格式：全角括号 → 半角括号，中文括号 → 英文括号。
+    用于客户名称匹配前的预处理，解决数据源括号不一致导致的匹配失败问题。
+    例如：（中粮）→ (中粮)，(中粮）→ (中粮)，（中粮) → (中粮)
+    """
+    if not isinstance(text, str):
+        return str(text) if text is not None else ''
+    # 全角括号 → 半角
+    text = text.replace('（', '(').replace('）', ')')
+    # 中文括号（与全角相同，此处做兜底）统一为半角
+    text = text.replace('【', '[').replace('】', ']')
+    text = text.replace('《', '<').replace('》', '>')
+    return text.strip()
+
 def locate_header_and_read(file_stream, key_columns):
     try:
         file_stream.seek(0)
@@ -153,22 +169,33 @@ def get_customer_mappings():
             break
             
     if not mapping_file:
-        return {}, {}
-    
+        return {}, {}, {}, {}
+
     try:
         df_total = pd.read_excel(mapping_file, sheet_name='总')
         df_total.columns = df_total.columns.astype(str).str.strip().str.replace('\n', '').str.replace('\r', '')
         df_total.dropna(subset=['客户名称'], inplace=True)
+        # 原始映射
         group_map = dict(zip(df_total['客户名称'].astype(str).str.strip(), df_total['客户所属集团']))
-        
+        # 括号归一化映射：键名统一转为半角英文括号，提升匹配鲁棒性
+        group_map_normalized = {
+            _normalize_brackets(k): v
+            for k, v in group_map.items()
+        }
+
         df_internal = pd.read_excel(mapping_file, sheet_name='内部')
         df_internal.columns = df_internal.columns.astype(str).str.strip().str.replace('\n', '').str.replace('\r', '')
         df_internal.dropna(subset=['客户名称'], inplace=True)
         internal_company_map = dict(zip(df_internal['客户名称'].astype(str).str.strip(), df_internal['所属专业化公司']))
-        
-        return group_map, internal_company_map
+        # 括号归一化映射
+        internal_company_map_normalized = {
+            _normalize_brackets(k): v
+            for k, v in internal_company_map.items()
+        }
+
+        return group_map, internal_company_map, group_map_normalized, internal_company_map_normalized
     except Exception:
-        return {}, {}
+        return {}, {}, {}, {}
 
 def map_reason1(x):
     if pd.isna(x): return x
@@ -1373,8 +1400,8 @@ def process_overdue_sales(uploaded_files, need_report=False):
     else:
         df_final = df_merged.copy()
 
-    group_map, internal_map = get_customer_mappings()
-    
+    group_map, internal_map, group_map_norm, internal_map_norm = get_customer_mappings()
+
     cols_to_fill = ['调整后逾期销售金额', '合同单价', '合同金额', '交货结束日期', '交货开始日期', '合同数量']
     for col in cols_to_fill:
         if col not in df_final.columns:
@@ -1382,12 +1409,20 @@ def process_overdue_sales(uploaded_files, need_report=False):
 
     if '客户名称' in df_final.columns:
         df_final['客户名称_clean'] = df_final['客户名称'].astype(str).str.strip()
-        df_final['所属集团'] = df_final['客户名称_clean'].map(group_map).fillna("")
+        # 括号归一化后的键名，用于兜底匹配（解决全角/半角、中文/英文括号不一致问题）
+        df_final['客户名称_norm'] = df_final['客户名称_clean'].apply(_normalize_brackets)
+        # 优先原始匹配，失败时回退到归一化匹配
+        df_final['所属集团'] = df_final['客户名称_clean'].map(group_map).fillna(
+            df_final['客户名称_norm'].map(group_map_norm)
+        ).fillna("")
         df_final['集团内部客户'] = df_final.apply(
-            lambda row: internal_map.get(row['客户名称_clean'], "") if row['所属集团'] == '中粮集团' else "", 
+            lambda row: (
+                internal_map.get(row['客户名称_clean'], "")
+                or internal_map_norm.get(row['客户名称_norm'], "")
+            ) if row['所属集团'] == '中粮集团' else "",
             axis=1
         )
-        df_final.drop(columns=['客户名称_clean'], inplace=True)
+        df_final.drop(columns=['客户名称_clean', '客户名称_norm'], inplace=True)
     else:
         df_final['所属集团'] = ""
         df_final['集团内部客户'] = ""

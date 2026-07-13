@@ -1,5 +1,5 @@
 # ==========================================
-# PART 1: 初始保证金处理逻辑 (从 app.py 抽离)
+# PART 1: 初始保证金处理逻辑 
 # ==========================================
 import io
 import copy
@@ -515,8 +515,12 @@ def process_margin_deposit_logic(current_file, prev_file):
         if disappeared_rows:
             html_disappeared = f'<div style="background: {st.session_state.card_bg}; padding: 18px 22px; border-radius: 20px; border: 2.5px solid #e05a5a; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(107, 92, 67, 0.15);">'
             html_disappeared += '<h4 style="color: #794f27; margin-top: 0; margin-bottom: 10px;">🔴 前一日已回款合同明细</h4>'
+            # 复用与 A 类逾期明细"业务单位"列相同的清洗逻辑，确保展示风格一致
+            dept_replacements = ['沿海深圳', '食品原料部', '经营部', '中粮贸易（深圳）有限公司-', '（旧）']
             for row in disappeared_rows:
                 dept = str(row.get('业务部门', '')).strip()
+                for r in dept_replacements:
+                    dept = dept.replace(r, '')
                 cid = str(row.get('合同编号', '')).strip()
                 client = str(row.get('客户', '')).strip()
                 date_val = row.get('应收保证金日期', '')
