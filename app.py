@@ -462,7 +462,7 @@ def help_modal():
     st.markdown("""
 <div style="font-size: 0.95rem; color: var(--ac-text); line-height: 1.6;">
 <h3 style="color: var(--ac-green);">📊 关于 Take It Easy</h3>
-<p>本终端是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
+<p>本终端是专为风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、精准的风险洞察体验。</p>
 
 <hr style="border: 0; border-top: 1px solid var(--ac-wood); margin: 15px 0;">
 
@@ -471,7 +471,7 @@ def help_modal():
 <ul style="padding-left: 20px;">
 <li><b>打通数据汇报的"最后一公里" (End-to-End Output)：</b> 传统 BI 工具的终点往往是"可视化看板"，用户看完数据后仍需手动截图拼凑 Word。而 CTMR 能够穿透底层数据，直接封装为<b>排版就绪、带标准通报话术的 Word 催收函与风控简报</b>，彻底消除"看数据"与"写报告"的割裂感。</li>
 <li><b>零代码的专家级风控引擎 (Hyper-Customization)：</b> 使用 Power Query 往往要求人员具备编写 M 函数或 DAX 的能力。CTMR 将特化的复杂业务逻辑（如：智能感知 1-49 吨与大宗标的的单位跃升、特定的百分比映射规则）<b>黑盒化封装</b>。它不仅是清洗工具，更是开箱即用的"数字风控专家"。</li>
-<li><b>跨平台排版防火墙 (MS Word / WPS 像素级完美兼容)：</b> 传统自动化脚本生成的文档极易因为办公软件底层解析差异，在 WPS 中出现列宽缩水、自适应变形等排版崩塌问题。CTMR 独创底层 XML 深度锚定技术，强制注入 <code>&lt;w:tblLayout w:type="fixed"/&gt;</code> 固定网格，实现了每个单独单元格（Cell）的双重列宽重锁，确保输出报告在微软 MS Word 与国产 WPS Office 中<b>实现 100% 零误差、像素级一致渲染</b>。</li>
+<li><b>跨平台排版防火墙 (MS Word / WPS 像素级完美兼容)：</b> 传统自动化脚本生成的文档极易因为办公软件底层解析差异，在 WPS 中出现列宽缩水、自适应变形等排版崩塌问题。CTMR 采用底层 XML 深度锚定技术，确保输出报告在微软 MS Word 与国产 WPS Office 中<b>实现 100% 零误差、像素级一致渲染</b>。</li>
 <li><b>极简架构与"阅后即焚"的合规保障 (Ephemeral Security)：</b> 传统工具往往需要安装沉重客户端，极易在本地留下数据缓存。CTMR 采用极轻量架构，即开即用；且计算全过程在内存中流转，<b>阅后即焚、零数据落盘</b>，完美规避客户数据泄露的合规风险。</li>
 </ul>
 
