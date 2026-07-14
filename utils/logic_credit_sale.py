@@ -145,31 +145,59 @@ def apply_table_borders(table):
     tblPr.append(tblBorders)
 
 
+def enforce_fixed_table_layout(table):
+    """WPS 兼容：显式写入 tblLayout type='fixed'（防重复）"""
+    tblPr = table._tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement('w:tblPr')
+        table._tbl.insert(0, tblPr)
+    old = tblPr.find(qn('w:tblLayout'))
+    if old is not None:
+        tblPr.remove(old)
+    tl = OxmlElement('w:tblLayout')
+    tl.set(qn('w:type'), 'fixed')
+    tblPr.append(tl)
+
+
 def set_fixed_col_widths(table, widths_cm):
-    """锁定表格列宽（WPS 兼容版）— 写入 tblGrid/gridCol 确保跨平台一致"""
+    """锁定表格列宽（WPS 深度兼容版）— tblGrid + 逐单元格 <w:tcW> 双重锁定"""
     table.autofit = False
     table.allow_autofit = False
     tbl = table._tbl
 
-    # 1. 移除旧的 tblGrid（如果存在）
+    # 1. tblGrid + gridCol
     old_grid = tbl.find(qn('w:tblGrid'))
     if old_grid is not None:
         tbl.remove(old_grid)
-
-    # 2. 写入新的 tblGrid + gridCol 元素（WPS 依赖此节点计算列宽）
     tblGrid = OxmlElement('w:tblGrid')
     for w_cm in widths_cm:
         gridCol = OxmlElement('w:gridCol')
-        # twips: 1cm = 567 twips（Word 内部单位）
         gridCol.set(qn('w:w'), str(int(w_cm * 567)))
         tblGrid.append(gridCol)
     tbl.insert(0, tblGrid)
 
-    # 3. 逐单元格设置宽度（双重保险：Word 依赖 cell.width，WPS 依赖 tblGrid）
+    # 2. 逐单元格设置宽度
     for i, w_cm in enumerate(widths_cm):
         if i < len(table.columns):
             for cell in table.columns[i].cells:
                 cell.width = Cm(w_cm)
+
+    # 3. WPS 关键：为每一行的每一个 <w:tc> 注入 <w:tcW>（WPS 严格依赖此标签）
+    twips = [int(w * 567) for w in widths_cm]
+    for row in table.rows:
+        for i, cell in enumerate(row.cells):
+            if i >= len(twips):
+                break
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            # 移除旧 tcW
+            old_tcw = tcPr.find(qn('w:tcW'))
+            if old_tcw is not None:
+                tcPr.remove(old_tcw)
+            tcW = OxmlElement('w:tcW')
+            tcW.set(qn('w:w'), str(twips[i]))
+            tcW.set(qn('w:type'), 'dxa')
+            tcPr.append(tcW)
 
 
 def set_table_row_height(row, height_cm):
@@ -287,9 +315,11 @@ FONT_RED_BOLD = Font(bold=True, color="FF0000")
 
 def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
                                     updated_summary_io, g_value_map, all_k_values,
-                                    existing_l_values, ext_data, target_row_balance):
+                                    existing_l_values, ext_data, target_row_balance,
+                                    overdue_contracts, actual_only_contracts,
+                                    actual_count, actual_amount_wan):
     """在内存中生成完整的逾期赊销周报 Word 文档，返回 BytesIO。
-    updated_summary_io: 经过 Step2 写入后的赊销数据汇总 BytesIO（非原始上传文件）"""
+    overdue_contracts / actual_count 等由主函数步骤1传入，避免重复解析Excel。"""
     today = date.today()
 
     # 截至日期统一为距今天最近的上一个周三（1、2、3 段落用）
@@ -383,125 +413,7 @@ def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
     n_change = n_latest - g_avg
     n_pct_change = calc_pct_change(n_latest, g_avg)
 
-    # --- 读取赊销明细 ---
-    daily_bytes_io.seek(0)
-    wb_daily_rpt = openpyxl.load_workbook(io.BytesIO(daily_bytes_io.read()), data_only=True)
-    ws_daily_detail = wb_daily_rpt['赊销明细']
-
-    header_row = None
-    col_map = {}
-    for r in range(1, min(ws_daily_detail.max_row, 20)):
-        score = 0
-        temp_map = {}
-        for c in range(1, ws_daily_detail.max_column + 1):
-            val = ws_daily_detail.cell(row=r, column=c).value
-            if val and isinstance(val, str):
-                stripped = val.strip()
-                if stripped in REFERENCE_COLUMNS:
-                    score += 1
-                    temp_map[stripped] = c - 1
-        if score >= 5:
-            header_row = r
-            col_map = temp_map
-            break
-    if header_row is None:
-        wb_daily_rpt.close()
-        raise ValueError("无法定位赊销明细标题行")
-
-    SCAN_COL_MAX = max(ws_daily_detail.max_column + 30, 80)
-    col_customer = col_map.get('客户名称', None)
-    col_variety_idx = None
-    col_quantity_idx = None
-    col_dept_idx = None
-    col_delivery_idx = None
-    col_credit_mode_idx = None
-    col_remark_idx = None
-    col_overdue_class_idx = None
-    col_contract_idx = None
-    col_balance_idx = None
-
-    for r in range(header_row, min(header_row + 2, ws_daily_detail.max_row + 1)):
-        for c in range(1, SCAN_COL_MAX + 1):
-            v = ws_daily_detail.cell(row=r, column=c).value
-            if v is None:
-                continue
-            vs = str(v).strip()
-            if ('品种' == vs or vs == '品种') and col_variety_idx is None:
-                col_variety_idx = c - 1
-            elif '合同数量' in vs and col_quantity_idx is None:
-                col_quantity_idx = c - 1
-            elif '经营部' in vs and col_dept_idx is None:
-                col_dept_idx = c - 1
-            elif '交货方式' in vs and col_delivery_idx is None:
-                col_delivery_idx = c - 1
-            elif '授信模式' in vs and col_credit_mode_idx is None:
-                col_credit_mode_idx = c - 1
-            elif ('有关情况说明' in vs or '情况说明' in vs) and col_remark_idx is None:
-                col_remark_idx = c - 1
-            elif '逾期分类' in vs and col_overdue_class_idx is None:
-                col_overdue_class_idx = c - 1
-            elif '销售合同编号' in vs and col_contract_idx is None:
-                col_contract_idx = c - 1
-            elif '期末赊销余额' in vs and col_balance_idx is None:
-                col_balance_idx = c - 1
-
-    overdue_contracts = []
-    actual_only_contracts = []
-
-    for r in range(header_row + 1, ws_daily_detail.max_row + 1):
-        al_val_raw = ws_daily_detail.cell(row=r, column=col_overdue_class_idx + 1).value if col_overdue_class_idx is not None else None
-        if al_val_raw is None:
-            continue
-        al_str = str(al_val_raw).strip()
-        if "A" not in al_str or "实际已逾期" not in al_str:
-            continue
-
-        remark_raw = ws_daily_detail.cell(row=r, column=col_remark_idx + 1).value if col_remark_idx is not None else ""
-        remark_text = str(remark_raw) if remark_raw else ""
-        parsed = parse_overdue_amounts_days(remark_text)
-
-        variety_raw = ws_daily_detail.cell(row=r, column=col_variety_idx + 1).value if col_variety_idx is not None else ""
-        variety = str(variety_raw).strip() if variety_raw else ""
-        qty_raw = ws_daily_detail.cell(row=r, column=col_quantity_idx + 1).value if col_quantity_idx is not None else 0
-        qty_tons = safe_float(qty_raw) or 0
-        dept_raw = ws_daily_detail.cell(row=r, column=col_dept_idx + 1).value if col_dept_idx is not None else ""
-        dept = str(dept_raw).strip() if dept_raw else ""
-        cust_raw = ws_daily_detail.cell(row=r, column=col_customer + 1).value if col_customer is not None else ""
-        cust = str(cust_raw).strip() if cust_raw else ""
-        delivery_raw = ws_daily_detail.cell(row=r, column=col_delivery_idx + 1).value if col_delivery_idx is not None else ""
-        delivery = str(delivery_raw).strip() if delivery_raw else ""
-
-        if col_credit_mode_idx is not None:
-            credit_raw = ws_daily_detail.cell(row=r, column=col_credit_mode_idx + 1).value
-            credit_type = str(credit_raw).strip() if credit_raw is not None else ""
-        else:
-            credit_type = ""
-
-        contract_raw = ws_daily_detail.cell(row=r, column=col_contract_idx + 1).value if col_contract_idx is not None else ""
-        contract_no = str(contract_raw).strip() if contract_raw else ""
-        total_amount = parsed['actual_amount'] + parsed['past_amount']
-        total_days = parsed['actual_days'] + parsed['past_days']
-
-        contract_info = {
-            'dept': dept, 'customer': cust, 'variety': variety,
-            'delivery': delivery, 'qty_tons': qty_tons,
-            'total_amount': total_amount, 'total_days': total_days,
-            'actual_amount': parsed['actual_amount'],
-            'actual_days': parsed['actual_days'],
-            'past_amount': parsed['past_amount'],
-            'past_days': parsed['past_days'],
-            'is_actual': parsed['is_actual'], 'is_past': parsed['is_past'],
-            'remark': remark_text, 'credit_type': credit_type,
-            'contract_no': contract_no,
-        }
-        overdue_contracts.append(contract_info)
-        if parsed['is_actual'] and not parsed['is_past']:
-            actual_only_contracts.append(contract_info)
-
-    actual_count = len(actual_only_contracts)
-    actual_amount_wan = sum(format_amount_wan(c['actual_amount']) for c in overdue_contracts)
-
-    wb_daily_rpt.close()
+    # overdue_contracts / actual_count / actual_amount_wan 由主函数步骤1传入，零重复解析
 
     # ==================== 构建 Word 文档 ====================
     doc = Document()
@@ -689,6 +601,9 @@ def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
                 set_cell_background(cell, 'D9D9D9')
     set_repeat_table_header(table1.rows[0])
     apply_table_borders(table1)
+    # WPS 二次重锁：确保合并单元格后的新行携带宽度标签
+    enforce_fixed_table_layout(table1)
+    set_fixed_col_widths(table1, COL_WIDTHS_T1)
 
     # ==================== 4、逾期分客户 ====================
     p5 = doc.add_paragraph(style='NormalContent')
@@ -812,6 +727,8 @@ def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
         set_table_row_height(row, 0.66)
     set_repeat_table_header(table2.rows[0])
     apply_table_borders(table2)
+    enforce_fixed_table_layout(table2)
+    set_fixed_col_widths(table2, COL_WIDTHS_T2)
 
     # ================================================================
     # （一）赊销业务 — 新增章节
@@ -939,6 +856,8 @@ def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
         set_table_row_height(row, 0.8)
     set_repeat_table_header(table3.rows[0])
     apply_table_borders(table3)
+    enforce_fixed_table_layout(table3)
+    set_fixed_col_widths(table3, COL_WIDTHS_T3)
 
     # ==================== 保存到 BytesIO ====================
     docx_bytes = io.BytesIO()
@@ -1092,6 +1011,97 @@ def process_credit_sale(uploaded_files):
             total_overdue_amount += row_amount
 
         wb_daily.close()
+
+        # --- 提取逾期合同明细（复用步骤1已定位的标题行与列索引，避免 Word 函数重复解析）---
+        wb_daily_detail = openpyxl.load_workbook(io.BytesIO(daily_bytes), data_only=True)
+        ws_detail2 = wb_daily_detail['赊销明细']
+
+        # 复用步骤1的 all_col_map 定位辅助列（与步骤1完全一致的标题行）
+        _col_customer_d = all_col_map.get('客户名称', None)
+        _col_contract_d = all_col_map.get('销售合同编号', None)
+        _col_balance_d  = all_col_map.get('期末赊销余额', None)
+        _col_overdue_d  = all_col_map.get('逾期分类', None)
+
+        # 扫描辅助列（品种/合同数量/经营部/交货方式/授信模式/有关情况说明）
+        _col_variety_d   = None
+        _col_quantity_d  = None
+        _col_dept_d      = None
+        _col_delivery_d  = None
+        _col_credit_d    = None
+        _col_remark_d    = None
+
+        SCAN_MAX_D = max(ws_detail2.max_column + 30, 80)
+        for _r in range(header_row_idx, min(header_row_idx + 2, ws_detail2.max_row + 1)):
+            for _c in range(1, SCAN_MAX_D + 1):
+                _v = ws_detail2.cell(row=_r, column=_c).value
+                if _v is None:
+                    continue
+                _vs = str(_v).strip()
+                if ('品种' == _vs or _vs == '品种') and _col_variety_d is None:
+                    _col_variety_d = _c - 1
+                elif '合同数量' in _vs and _col_quantity_d is None:
+                    _col_quantity_d = _c - 1
+                elif '经营部' in _vs and _col_dept_d is None:
+                    _col_dept_d = _c - 1
+                elif '交货方式' in _vs and _col_delivery_d is None:
+                    _col_delivery_d = _c - 1
+                elif '授信模式' in _vs and _col_credit_d is None:
+                    _col_credit_d = _c - 1
+                elif ('有关情况说明' in _vs or '情况说明' in _vs) and _col_remark_d is None:
+                    _col_remark_d = _c - 1
+
+        overdue_contracts_all = []
+        actual_only_contracts_all = []
+
+        for _r in range(header_row_idx + 1, ws_detail2.max_row + 1):
+            al_v = ws_detail2.cell(row=_r, column=_col_overdue_d + 1).value if _col_overdue_d is not None else None
+            if al_v is None:
+                continue
+            al_s = str(al_v).strip()
+            if "A" not in al_s or "实际已逾期" not in al_s:
+                continue
+
+            remark_r = ws_detail2.cell(row=_r, column=_col_remark_d + 1).value if _col_remark_d is not None else ""
+            remark_t = str(remark_r) if remark_r else ""
+            parsed = parse_overdue_amounts_days(remark_t)
+
+            variety_r = ws_detail2.cell(row=_r, column=_col_variety_d + 1).value if _col_variety_d is not None else ""
+            variety = str(variety_r).strip() if variety_r else ""
+            qty_r = ws_detail2.cell(row=_r, column=_col_quantity_d + 1).value if _col_quantity_d is not None else 0
+            qty_tons = safe_float(qty_r) or 0
+            dept_r = ws_detail2.cell(row=_r, column=_col_dept_d + 1).value if _col_dept_d is not None else ""
+            dept = str(dept_r).strip() if dept_r else ""
+            cust_r = ws_detail2.cell(row=_r, column=_col_customer_d + 1).value if _col_customer_d is not None else ""
+            cust = str(cust_r).strip() if cust_r else ""
+            delivery_r = ws_detail2.cell(row=_r, column=_col_delivery_d + 1).value if _col_delivery_d is not None else ""
+            delivery = str(delivery_r).strip() if delivery_r else ""
+            credit_r = ws_detail2.cell(row=_r, column=_col_credit_d + 1).value if _col_credit_d is not None else ""
+            credit_type = str(credit_r).strip() if credit_r is not None else ""
+            contract_r = ws_detail2.cell(row=_r, column=_col_contract_d + 1).value if _col_contract_d is not None else ""
+            contract_no = str(contract_r).strip() if contract_r else ""
+
+            total_amt = parsed['actual_amount'] + parsed['past_amount']
+            total_day = parsed['actual_days'] + parsed['past_days']
+
+            info = {
+                'dept': dept, 'customer': cust, 'variety': variety,
+                'delivery': delivery, 'qty_tons': qty_tons,
+                'total_amount': total_amt, 'total_days': total_day,
+                'actual_amount': parsed['actual_amount'],
+                'actual_days': parsed['actual_days'],
+                'past_amount': parsed['past_amount'],
+                'past_days': parsed['past_days'],
+                'is_actual': parsed['is_actual'], 'is_past': parsed['is_past'],
+                'remark': remark_t, 'credit_type': credit_type,
+                'contract_no': contract_no,
+            }
+            overdue_contracts_all.append(info)
+            if parsed['is_actual'] and not parsed['is_past']:
+                actual_only_contracts_all.append(info)
+
+        _actual_count = len(actual_only_contracts_all)
+        _actual_amount_wan = sum(format_amount_wan(c['actual_amount']) for c in overdue_contracts_all)
+        wb_daily_detail.close()
 
         # ============================================================
         # 步骤 2：写入赊销数据汇总
@@ -1448,7 +1458,9 @@ def process_credit_sale(uploaded_files):
         docx_bytes = _generate_weekly_credit_report(
             io.BytesIO(daily_bytes), io.BytesIO(overdue_bytes),
             updated_summary_io, g_value_map, all_k_values,
-            existing_l_values, ext_data, target_row_balance)
+            existing_l_values, ext_data, target_row_balance,
+            overdue_contracts_all, actual_only_contracts_all,
+            _actual_count, _actual_amount_wan)
 
         logs.append("✅ 逾期赊销周报处理完成。")
         return excel_bytes, docx_bytes, logs
