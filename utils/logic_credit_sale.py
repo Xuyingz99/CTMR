@@ -117,14 +117,23 @@ def set_cell_background(cell, fill_color):
 
 
 def apply_table_borders(table):
+    """为表格添加全部边框 + 固定布局（WPS 兼容：防重复元素）"""
     tbl = table._tbl
     tblPr = tbl.tblPr
     if tblPr is None:
         tblPr = OxmlElement('w:tblPr')
         tbl.insert(0, tblPr)
+    # 固定列宽布局（先清理旧元素防重复）
+    old_layout = tblPr.find(qn('w:tblLayout'))
+    if old_layout is not None:
+        tblPr.remove(old_layout)
     tblLayout = OxmlElement('w:tblLayout')
     tblLayout.set(qn('w:type'), 'fixed')
     tblPr.append(tblLayout)
+    # 边框（先清理旧元素防重复）
+    old_borders = tblPr.find(qn('w:tblBorders'))
+    if old_borders is not None:
+        tblPr.remove(old_borders)
     tblBorders = OxmlElement('w:tblBorders')
     for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
         border = OxmlElement(f'w:{border_name}')
@@ -137,13 +146,30 @@ def apply_table_borders(table):
 
 
 def set_fixed_col_widths(table, widths_cm):
+    """锁定表格列宽（WPS 兼容版）— 写入 tblGrid/gridCol 确保跨平台一致"""
     table.autofit = False
     table.allow_autofit = False
+    tbl = table._tbl
+
+    # 1. 移除旧的 tblGrid（如果存在）
+    old_grid = tbl.find(qn('w:tblGrid'))
+    if old_grid is not None:
+        tbl.remove(old_grid)
+
+    # 2. 写入新的 tblGrid + gridCol 元素（WPS 依赖此节点计算列宽）
+    tblGrid = OxmlElement('w:tblGrid')
+    for w_cm in widths_cm:
+        gridCol = OxmlElement('w:gridCol')
+        # twips: 1cm = 567 twips（Word 内部单位）
+        gridCol.set(qn('w:w'), str(int(w_cm * 567)))
+        tblGrid.append(gridCol)
+    tbl.insert(0, tblGrid)
+
+    # 3. 逐单元格设置宽度（双重保险：Word 依赖 cell.width，WPS 依赖 tblGrid）
     for i, w_cm in enumerate(widths_cm):
         if i < len(table.columns):
-            col_width = Cm(w_cm)
             for cell in table.columns[i].cells:
-                cell.width = col_width
+                cell.width = Cm(w_cm)
 
 
 def set_table_row_height(row, height_cm):
