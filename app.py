@@ -11,6 +11,7 @@ from utils.logic_CG import process_overdue_purchase
 from utils.logic_init import process_margin_deposit_logic
 from utils.logic_add import process_additional_margin_logic
 from utils.logic_prepay import process_prepay
+from utils.logic_credit_sale import process_credit_sale
 
 warnings.filterwarnings('ignore')
 
@@ -456,12 +457,12 @@ def core_data_update_modal():
 # ==========================================
 # 动森风格弹窗：网页说明
 # ==========================================
-@st.dialog("📖 CTMR 智能风控终端使用手册", width="large")
+@st.dialog("📖 智能风控终端使用手册", width="large")
 def help_modal():
     st.markdown("""
 <div style="font-size: 0.95rem; color: var(--ac-text); line-height: 1.6;">
 <h3 style="color: var(--ac-green);">📊 关于 Take It Easy</h3>
-<p>本终端（CTMR）是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
+<p>本终端是专为粮食贸易风控条线量身定制的自动化数据中枢。我们将繁杂、冗长的传统多源报表处理，重塑为极简的"一键式"智能流水线，为您提供高效、优雅、精准的风险洞察体验。</p>
 
 <hr style="border: 0; border-top: 1px solid var(--ac-wood); margin: 15px 0;">
 
@@ -515,7 +516,7 @@ def help_modal():
 <li><b>"动森海岛"治愈视觉：</b> 秉承减压设计哲学，采用舒缓色域、有机圆角边界及拟真光标，驱散传统数据面板的压迫感。</li>
 <li><b>绝对防篡改锚点：</b> 无论系统后台逻辑如何高频迭代，底层部署的"前端 UI 防护墙"都会为您守住当前最完美的交互界面。</li>
 </ul>
-<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— Take It Easy 自动化工程团队</p>
+<p style="text-align: right; font-weight: bold; margin-top: 20px; opacity: 0.7;">—— XYZ</p>
 </div>
     """, unsafe_allow_html=True)
 
@@ -696,7 +697,8 @@ def main():
             "⏱️ 逾期销售处理": "overdue_sales",
             "🛒 逾期采购处理": "overdue_purchase",
             "📊 信用风险管理日报": "credit_report",
-            "📋 预付款业务处理": "prepay"
+            "📋 预付款业务处理": "prepay",
+            "📝 逾期赊销周报": "credit_sale"
         }
 
         mode = st.radio("选择功能", list(function_map.keys()), horizontal=True, label_visibility="collapsed")
@@ -708,7 +710,7 @@ def main():
                 <div class="info-title">⚠️ 注意事项</div>
                 <div style="margin-left: 2px;">
                     <div>请同时上传今日与对照日两个报表文件</div>
-                    <div style="margin-top: 4px;">系统将根据文件名中的<b>日期</b>或<b>WSBZJQKB</b>标识自动区分今日与对照日报表</div>
+                    <div style="margin-top: 4px;">系统将根据文件称呼标识自动区分今日与对照日报表</div>
                     <div style="margin-top: 4px;">原始表单 Sheet 名称必须包含 WSBZJQKB</div>
                     <div style="margin-top: 4px;">生成结果将包含清洗后的明细表及 A 类逾期汇总</div>
                 </div>
@@ -1145,6 +1147,72 @@ def main():
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True
                         )
+
+        # --- 模块 7: 逾期赊销周报 ---
+        elif mode == "📝 逾期赊销周报":
+            st.markdown("""
+            <div class="info-box">
+                <div class="info-title">⚠️ 注意事项</div>
+                <div style="margin-left: 2px;">
+                    <div>请同时上传以下3个Excel文件（文件名需含对应关键词）</div>
+                    <div style="margin-top: 4px;"><b>1. 赊销日报表</b>（含赊销明细/额度/海大/经营部表单）、逾期明细汇总表</b>（含2026年汇总表单）— 需确保相应表单数据已更新</div>
+                    <div style="margin-top: 4px;"><b>2. 赊销数据汇总</b>（含周赊销余额对比/周逾期赊销对比/赊销外部余额）— 可自动更新，建议上传前检查历史数据</div>
+                    <div style="margin-top: 4px; color: #725d42;">📌 逾期分类列须含"A"及"实际已逾期"方可识别为当期逾期合同；含"曾逾期"则为历史逾期</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            upload_files = st.file_uploader(
+                "📂 上传【赊销日报表 + 逾期明细汇总表 + 赊销数据汇总】",
+                type=["xlsx", "xls"],
+                accept_multiple_files=True,
+                key="credit_sale_upload"
+            )
+
+            if st.button("🚀 生成逾期赊销周报", key="btn_credit_sale"):
+                if not upload_files or len(upload_files) < 3:
+                    st.warning("⚠️ 请上传至少3个文件（赊销日报表、逾期明细汇总表、赊销数据汇总）！")
+                else:
+                    with st.spinner("正在处理数据并生成报告，请稍候..."):
+                        excel_io, doc_io, logs = process_credit_sale(upload_files)
+
+                        if excel_io:
+                            mmdd_str = datetime.now().strftime('%m%d')
+                            st.session_state.module_results["credit_sale"] = {
+                                "excel_io": excel_io,
+                                "doc_io": doc_io,
+                                "mmdd_str": mmdd_str,
+                            }
+                            st.rerun()
+                        else:
+                            st.session_state.module_results["credit_sale"] = None
+                            st.error("❌ 处理失败，请检查文件格式。")
+                            # 仅显示错误信息，不逐条输出过程日志
+                            error_logs = [log for log in logs if log.startswith("❌")]
+                            for log in error_logs:
+                                st.write(log)
+
+            cached = st.session_state.module_results.get("credit_sale")
+            if cached is not None:
+                st.success("✅ 逾期赊销周报生成完成")
+                st.markdown("### 📥 下载生成文件")
+                dl_col1, dl_col2 = st.columns(2)
+                with dl_col1:
+                    st.download_button(
+                        label="📊 下载【赊销数据汇总】 (Excel)",
+                        data=cached["excel_io"],
+                        file_name=f"赊销数据汇总_{cached['mmdd_str']}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                with dl_col2:
+                    st.download_button(
+                        label="📝 下载【逾期赊销周报】 (Word)",
+                        data=cached["doc_io"],
+                        file_name=f"逾期赊销周报_{cached['mmdd_str']}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
+                    )
 
     # 动森风格 Footer
     current_theme = st.session_state.get("current_theme", "🏝️ 狸克海岛")
