@@ -571,19 +571,18 @@ def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
         build_cell_text(table1.cell(row_idx, 2), contract['customer'], align='left', cn_size=9.0)
         build_cell_text(table1.cell(row_idx, 3), contract['variety'], cn_size=9.0)
         build_cell_text(table1.cell(row_idx, 4), contract['delivery'], cn_size=9.0)
-        qty_display = format_qty_auto(contract['qty_tons'])
+        
+        # 修改1：仅在表格填充时，通过字符串替换去除“万吨”和“吨”后缀，不影响其他地方
+        qty_display = format_qty_auto(contract['qty_tons']).replace('万吨', '').replace('吨', '')
         build_cell_text(table1.cell(row_idx, 5), qty_display, cn_size=9.0)
+        
         days1 = int(round(contract['total_days'])) if contract['total_days'] > 0 else '-'
         build_cell_text(table1.cell(row_idx, 6), str(days1) if days1 != '-' else days1, cn_size=9.0)
         amt1 = format_amount_wan(contract['total_amount'])
         build_cell_text(table1.cell(row_idx, 7), str(amt1) if amt1 > 0 else '0', cn_size=9.0)
+        
         if contract['is_actual']:
-            days2 = int(round(contract['actual_days'])) if contract['actual_days'] > 0 else '-'
-            build_cell_text(table1.cell(row_idx, 8), str(days2) if days2 != '-' else days2, cn_size=9.0)
-        else:
-            build_cell_text(table1.cell(row_idx, 8), '-', cn_size=9.0)
-if contract['is_actual']:
-            # 将条件成立时的逾期天数 + 2
+            # 修改2：将条件成立时的逾期天数 + 2
             days2 = int(round(contract['actual_days'])) + 2 if contract['actual_days'] > 0 else '-'
             build_cell_text(table1.cell(row_idx, 8), str(days2) if days2 != '-' else days2, cn_size=9.0)
         else:
