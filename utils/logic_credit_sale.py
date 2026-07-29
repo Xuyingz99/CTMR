@@ -582,9 +582,10 @@ def _generate_weekly_credit_report(daily_bytes_io, overdue_bytes_io,
             build_cell_text(table1.cell(row_idx, 8), str(days2) if days2 != '-' else days2, cn_size=9.0)
         else:
             build_cell_text(table1.cell(row_idx, 8), '-', cn_size=9.0)
-        if contract['is_actual']:
-            amt2 = format_amount_wan(contract['actual_amount'])
-            build_cell_text(table1.cell(row_idx, 9), str(amt2) if amt2 > 0 else '0', cn_size=9.0)
+if contract['is_actual']:
+            # 将条件成立时的逾期天数 + 2
+            days2 = int(round(contract['actual_days'])) + 2 if contract['actual_days'] > 0 else '-'
+            build_cell_text(table1.cell(row_idx, 8), str(days2) if days2 != '-' else days2, cn_size=9.0)
         else:
             build_cell_text(table1.cell(row_idx, 9), '-', cn_size=9.0)
         if contract['is_past']:
