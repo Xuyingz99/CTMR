@@ -3,6 +3,8 @@ import pandas as pd
 import warnings
 import os
 from datetime import datetime
+import base64
+from pathlib import Path
 
 from utils.logic_credit import process_credit_report
 from utils.logic_XS import process_overdue_sales
@@ -22,6 +24,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# 素材本地化：从 static/ 读取素材并以 base64 data URI 内联，绕开 CDN 与静态文件服务
+_STATIC_DIR = Path(__file__).parent / "static"
+_MIME_TYPES = {".png": "image/png", ".svg": "image/svg+xml", ".webp": "image/webp", ".ttf": "font/ttf"}
+
+def _data_uri(filename):
+    path = _STATIC_DIR / filename
+    return f"data:{_MIME_TYPES[path.suffix]};base64," + base64.b64encode(path.read_bytes()).decode()
+
+nunito_css = "\n".join(
+    f"@font-face {{ font-family: 'Nunito'; font-style: normal; font-weight: {w}; "
+    f"font-display: swap; src: url('{_data_uri(f'nunito-{w}.ttf')}') format('truetype'); }}"
+    for w in (400, 700, 900)
+)
+
 # ==========================================
 # 🎨 动态主题配置引擎
 # ==========================================
@@ -33,7 +49,7 @@ THEMES = {
         "--ac-wood": "#D2BA99",       "--ac-card": "#FFFFFF",
         "--ac-info-bg": "#FFF8E6",
         "--ac-card-bg": "rgb(247, 243, 223)",  "--ac-card-border": "#c4b89e",
-        "--ac-bg-img": "linear-gradient(rgba(249, 246, 237, 0.92), rgba(249, 246, 237, 0.92)), url('app/static/menu_bg.svg')",
+        "--ac-bg-img": f"linear-gradient(rgba(249, 246, 237, 0.92), rgba(249, 246, 237, 0.92)), url('{_data_uri('menu_bg.svg')}')",
         "--ac-bg-size": "220px auto",
         "--ac-bg-position": "top left"
     },
@@ -63,7 +79,7 @@ css_vars_string = "\n".join([f"        {k}: {v};" for k, v in current_theme_vars
 st.markdown(f"""
 <style>
     /* 引入圆润可爱的字体 */
-    @import url('app/static/nunito.css');
+    {nunito_css}
 
     html {{ font-size: 18px !important; }}
 
@@ -81,7 +97,7 @@ st.markdown(f"""
         background-attachment: fixed !important;
         font-family: 'Nunito', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
         color: var(--ac-text) !important;
-        cursor: url('app/static/cursor-icon.png'), auto !important;
+        cursor: url('{_data_uri('cursor-icon.png')}'), auto !important;
     }}
 
     /* 关键修复：强制让 Streamlit 的顶层容器与内部视图透明，确保底层底纹完全暴露 */
@@ -101,7 +117,7 @@ st.markdown(f"""
 
     /* 强制所有交互元素及其内部文字使用动森光标 */
     button, button *, div[role="radiogroup"] label, div[role="radiogroup"] label *, a, a *, input, [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] section * {{
-        cursor: url('app/static/cursor-icon.png'), auto !important;
+        cursor: url('{_data_uri('cursor-icon.png')}'), auto !important;
     }}
 
     /* 覆盖 Streamlit 默认标题颜色 */
@@ -245,7 +261,7 @@ st.markdown(f"""
     [data-testid="stSpinner"] > div::before {{
         content: '';
         display: inline-block; width: 32px; height: 32px;
-        background-image: url('app/static/icon-leaf.png');
+        background-image: url('{_data_uri('icon-leaf.png')}');
         background-size: contain; background-repeat: no-repeat;
         animation: ac-spin 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         margin-right: 15px;
@@ -1224,11 +1240,11 @@ def main():
     theme = THEMES[current_theme]
     text_color = theme["--ac-text"]
     if "狸克海岛" in current_theme:
-        footer_bg = "app/static/footer-tree.webp"
+        footer_bg = _data_uri("footer-tree.webp")
         footer_h = "120px"
         footer_props = "bottom center / cover no-repeat"
     else:
-        footer_bg = "app/static/footer-sea.svg"
+        footer_bg = _data_uri("footer-sea.svg")
         footer_h = "80px"
         footer_props = "center / contain no-repeat"
 
