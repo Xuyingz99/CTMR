@@ -33,7 +33,7 @@ THEMES = {
         "--ac-wood": "#D2BA99",       "--ac-card": "#FFFFFF",
         "--ac-info-bg": "#FFF8E6",
         "--ac-card-bg": "rgb(247, 243, 223)",  "--ac-card-border": "#c4b89e",
-        "--ac-bg-img": "linear-gradient(rgba(249, 246, 237, 0.92), rgba(249, 246, 237, 0.92)), url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/demo/img/menu_bg.svg')",
+        "--ac-bg-img": "linear-gradient(rgba(249, 246, 237, 0.92), rgba(249, 246, 237, 0.92)), url('app/static/menu_bg.svg')",
         "--ac-bg-size": "220px auto",
         "--ac-bg-position": "top left"
     },
@@ -63,7 +63,7 @@ css_vars_string = "\n".join([f"        {k}: {v};" for k, v in current_theme_vars
 st.markdown(f"""
 <style>
     /* 引入圆润可爱的字体 */
-    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+    @import url('app/static/nunito.css');
 
     html {{ font-size: 18px !important; }}
 
@@ -81,7 +81,7 @@ st.markdown(f"""
         background-attachment: fixed !important;
         font-family: 'Nunito', 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
         color: var(--ac-text) !important;
-        cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), auto !important;
+        cursor: url('app/static/cursor-icon.png'), auto !important;
     }}
 
     /* 关键修复：强制让 Streamlit 的顶层容器与内部视图透明，确保底层底纹完全暴露 */
@@ -101,7 +101,7 @@ st.markdown(f"""
 
     /* 强制所有交互元素及其内部文字使用动森光标 */
     button, button *, div[role="radiogroup"] label, div[role="radiogroup"] label *, a, a *, input, [data-testid="stFileUploader"] section, [data-testid="stFileUploader"] section * {{
-        cursor: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/cursor/cursor-icon.png'), auto !important;
+        cursor: url('app/static/cursor-icon.png'), auto !important;
     }}
 
     /* 覆盖 Streamlit 默认标题颜色 */
@@ -245,7 +245,7 @@ st.markdown(f"""
     [data-testid="stSpinner"] > div::before {{
         content: '';
         display: inline-block; width: 32px; height: 32px;
-        background-image: url('https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/icons/icon-leaf.png');
+        background-image: url('app/static/icon-leaf.png');
         background-size: contain; background-repeat: no-repeat;
         animation: ac-spin 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         margin-right: 15px;
@@ -1224,11 +1224,11 @@ def main():
     theme = THEMES[current_theme]
     text_color = theme["--ac-text"]
     if "狸克海岛" in current_theme:
-        footer_bg = "https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/footer/footer-tree.webp"
+        footer_bg = "app/static/footer-tree.webp"
         footer_h = "120px"
         footer_props = "bottom center / cover no-repeat"
     else:
-        footer_bg = "https://cdn.jsdelivr.net/gh/guokaigdg/animal-island-ui@main/src/assets/img/footer/footer-sea.svg"
+        footer_bg = "app/static/footer-sea.svg"
         footer_h = "80px"
         footer_props = "center / contain no-repeat"
 
